@@ -1,0 +1,2865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HERO VS DINO MAID</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-void: #090612;
+            --neon-pink: #ff2a85;
+            --neon-cyan: #00f0ff;
+            --neon-gold: #ffd700;
+            --neon-green: #39ff14;
+        }
+
+        * { box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-void);
+            color: #ffffff;
+            font-family: 'Press Start 2P', monospace;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Retro CRT Scanline Overlay */
+        .crt-overlay {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 50;
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%,
+                rgba(0, 0, 0, 0.25) 50%
+            ), linear-gradient(
+                90deg,
+                rgba(255, 0, 0, 0.03),
+                rgba(0, 255, 0, 0.01),
+                rgba(0, 0, 255, 0.03)
+            );
+            background-size: 100% 3px, 6px 100%;
+        }
+
+        #arcade-cabinet {
+            position: relative;
+            width: 100%;
+            max-width: 960px;
+            aspect-ratio: 16 / 9;
+            max-height: 82vh;
+            background: #120c24;
+            border: 4px solid #3c2a6b;
+            border-radius: 14px;
+            box-shadow: 0 0 35px rgba(255, 42, 133, 0.35), inset 0 0 25px rgba(0, 0, 0, 0.85);
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        .pixel-btn {
+            font-family: 'Press Start 2P', monospace;
+            border: 3px solid #ffffff;
+            box-shadow: 0 4px 0 #000000, 0 0 15px rgba(255, 42, 133, 0.5);
+            transition: transform 0.08s ease, box-shadow 0.08s ease;
+            cursor: pointer;
+        }
+
+        .pixel-btn:active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #000000;
+        }
+
+        .neon-text-pink {
+            text-shadow: 2px 2px 0 #000, 0 0 12px #ff2a85;
+        }
+
+        .neon-text-cyan {
+            text-shadow: 2px 2px 0 #000, 0 0 10px #00f0ff;
+        }
+
+        .neon-text-gold {
+            text-shadow: 2px 2px 0 #000, 0 0 10px #ffd700;
+        }
+
+        /* Mobile Touch Controls */
+        #mobile-controls {
+            // Body contact check (50% damage during Dino Rush / Broomstick Charge)
+            if (
+                player.x < boss.x + boss.w - 12 &&
+                player.x + player.w > boss.x + 12 &&
+                player.y > boss.y - boss.h + 14 &&
+                player.y - player.h < boss.y
+            ) {
+                const contactMult = boss.chargeTimer > 0 ? 0.5 : 1.0;
+                damagePlayer(10 * dinoDmgScale * contactMult);
+            }
+        }
+
+        .touch-pad-btn {
+            background: rgba(34, 22, 66, 0.85);
+            border: 3px solid #00f0ff;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 0 #000;
+        }
+
+        .touch-pad-btn:active {
+            background: rgba(255, 42, 133, 0.85);
+            transform: translateY(2px);
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.04); }
+        }
+
+        .animate-pulse-slow {
+            animation: pulseGlow 1.8s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="crt-overlay"></div>
+
+    <!-- Main Arcade Screen Container -->
+    <div id="arcade-cabinet">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Top Arcade HUD Overlay -->
+        <div id="hud-overlay" class="hidden absolute top-0 left-0 right-0 p-2 sm:p-3 flex flex-col gap-1.5 pointer-events-none z-10">
+            <div class="flex justify-between items-start gap-2 text-[9px] sm:text-xs">
+                <!-- Player Stats -->
+                <div class="bg-black/75 border-2 border-cyan-400 rounded-lg p-1.5 sm:p-2 w-40 sm:w-56">
+                    <div class="flex justify-between text-cyan-300 mb-1">
+                        <span>HERO</span>
+                        <span id="hud-player-hp-text">100/100</span>
+                    </div>
+                    <div class="w-full h-2.5 bg-gray-900 border border-gray-600 rounded overflow-hidden">
+                        <div id="hud-player-hp-bar" class="h-full bg-gradient-to-r from-green-400 to-cyan-400 transition-all duration-150" style="width: 100%;"></div>
+                    </div>
+                    <div id="hud-buff-tag" class="mt-1 text-[8px] sm:text-[9px] text-yellow-300 truncate">
+                        WEAPON: STANDARD
+                    </div>
+                    <div id="hud-power-tag" class="mt-0.5 text-[7px] sm:text-[8px] text-pink-300 truncate">
+                        POWER: NONE (&lt;10% CHANCE)
+                    </div>
+                </div>
+
+                <!-- Center 15s Krillion Countdown & Score -->
+                <div class="bg-black/80 border-2 border-yellow-400 rounded-lg px-2.5 py-1.5 text-center">
+                    <div class="text-[8px] sm:text-[9px] text-yellow-300">KRILLION QUIZ IN</div>
+                    <div id="hud-krillion-timer" class="text-sm sm:text-lg text-white neon-text-gold mt-0.5">15.0s</div>
+                    <div id="hud-score" class="text-[8px] text-pink-400 mt-0.5">SCORE: 0</div>
+                </div>
+
+                <!-- Boss Stats -->
+                <div class="bg-black/75 border-2 border-pink-500 rounded-lg p-1.5 sm:p-2 w-44 sm:w-64 text-right">
+                    <div class="flex justify-between items-center text-pink-300 mb-1 gap-1">
+                        <span id="hud-stage-badge" class="bg-pink-600 text-white px-1 rounded text-[7px] sm:text-[8px]">STG 1/10</span>
+                        <span id="hud-boss-name" class="truncate text-[8px] sm:text-[10px]">DINO MAID</span>
+                    </div>
+                    <div class="w-full h-2.5 bg-gray-900 border border-gray-600 rounded overflow-hidden">
+                        <div id="hud-boss-hp-bar" class="h-full bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 transition-all duration-150" style="width: 100%;"></div>
+                    </div>
+                    <div id="hud-boss-hp-text" class="mt-1 text-[8px] sm:text-[9px] text-pink-200">
+                        HP: 460/460
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Home Screen Overlay -->
+        <div id="start-screen" class="absolute inset-0 bg-gradient-to-b from-[#13092b]/95 via-[#1c0e3d]/90 to-[#090612]/95 flex flex-col items-center justify-center p-4 text-center z-20">
+            <div class="text-[9px] sm:text-xs text-cyan-300 tracking-widest mb-1">1989 RETRO TRIVIA BATTLER</div>
+            <h1 class="text-xl sm:text-4xl text-pink-500 neon-text-pink leading-snug mb-1">
+                HERO VS DINO MAID
+            </h1>
+            <h2 class="text-sm sm:text-xl text-yellow-300 neon-text-gold mb-4">
+                25-STAGE ARCADE CLASH
+            </h2>
+
+            <div class="bg-black/70 border-2 border-purple-500 rounded-xl p-3 sm:p-4 max-w-lg text-[8px] sm:text-[10px] leading-relaxed text-gray-200 mb-5 space-y-2">
+                <p><span class="text-cyan-400">1. BATTLE:</span> Dodge &amp; blast the Tyrannosaurus Maid across <span class="text-pink-400">25 STAGES</span>! Clear a round for <span class="text-green-400">+10% MAX HP</span>!</p>
+                <p><span class="text-yellow-300">2. KRILLION PAUSE (EVERY 15s):</span> Time freezes! Type the <span class="text-pink-400">RAREST</span> valid answer!</p>
+                <p><span class="text-green-400">3. POWERS (&lt;10% RARITY):</span> 25% chance to unlock <span class="text-orange-400">1 PER-RUN POWER</span> (Flame, Lightning, Ice, or 1-in-50 Chrono Slow)!</p>
+                <p class="text-gray-400 pt-1">CONTROLS: [A/D / ARROWS] Move &bull; [W/UP] Jump &bull; [SPACE/Z] Shoot &bull; [SHIFT/X] Dash</p>
+            </div>
+
+            <button id="btn-start" class="pixel-btn animate-pulse-slow bg-pink-600 hover:bg-pink-500 text-white px-7 py-3.5 rounded-xl text-xs sm:text-base">
+                CLASSIC
+            </button>
+        </div>
+
+        <!-- Krillion Trivia Pause Modal -->
+        <div id="quiz-overlay" class="hidden absolute inset-0 bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-3 sm:p-6 z-30">
+            <div class="bg-[#180d36] border-4 border-yellow-400 rounded-2xl p-4 sm:p-6 w-full max-w-xl shadow-[0_0_40px_rgba(255,215,0,0.45)] text-center">
+                <div class="flex justify-between items-center text-[9px] sm:text-xs text-cyan-300 mb-2">
+                    <span>TIME FROZEN!</span>
+                    <span id="quiz-timer" class="text-yellow-300 text-sm sm:text-base">20.0s</span>
+                </div>
+
+                <div class="text-[10px] sm:text-xs text-pink-400 mb-1">NAME SOMETHING OBSCURE FOR:</div>
+                <div id="quiz-prompt" class="text-sm sm:text-xl text-white neon-text-cyan bg-black/60 border-2 border-cyan-500 rounded-xl py-3 px-3 mb-3 leading-snug">
+                    A TYPE OF FRUIT
+                </div>
+
+                <div id="quiz-input-area">
+                    <input
+                        id="quiz-input"
+                        type="text"
+                        autocomplete="off"
+                        autocorrect="off"
+                        spellcheck="false"
+                        placeholder="TYPE ANY ANSWER..."
+                        class="w-full bg-black border-3 border-pink-500 focus:border-yellow-300 outline-none rounded-xl px-3 py-3 text-center text-xs sm:text-base text-yellow-300 uppercase mb-3"
+                    />
+                    <button id="btn-submit-answer" class="pixel-btn bg-green-500 hover:bg-green-400 text-black px-6 py-2.5 rounded-xl text-xs sm:text-sm w-full">
+                        LOCK IN ANSWER!
+                    </button>
+                </div>
+
+                <!-- Result Reveal Box -->
+                <div id="quiz-result-area" class="hidden space-y-2.5 mt-2">
+                    <div id="quiz-autocorrect-note" class="text-[8px] sm:text-[10px] text-cyan-300"></div>
+                    <div id="quiz-rarity-display" class="text-base sm:text-2xl text-yellow-300 neon-text-gold">
+                        ONLY 4% OF PEOPLE SAID THAT!
+                    </div>
+                    <!-- Rarity Percentage Bar -->
+                    <div class="bg-black/80 border-2 border-purple-400 rounded-xl p-2.5">
+                        <div class="flex justify-between text-[7px] sm:text-[9px] text-gray-300 mb-1">
+                            <span>0% (ULTRA RARE)</span>
+                            <span id="quiz-pct-label" class="text-yellow-300">4%</span>
+                            <span>100% (COMMON)</span>
+                        </div>
+                        <div class="relative w-full h-4 bg-gray-900 border border-gray-600 rounded-lg overflow-hidden">
+                            <div id="quiz-rarity-bar" class="h-full bg-gradient-to-r from-green-400 via-yellow-400 to-pink-500 transition-all duration-500 ease-out" style="width: 0%;"></div>
+                            <!-- 10% Power Threshold Marker -->
+                            <div class="absolute top-0 bottom-0 left-[10%] w-0.5 bg-cyan-300 shadow-[0_0_6px_#00f0ff]" title="10% Power Threshold"></div>
+                        </div>
+                        <div class="text-left text-[7px] text-cyan-300 mt-1" style="padding-left: 4%;">
+                            &uarr; &lt;10% POWER CHANCE ZONE (25%)
+                        </div>
+                    </div>
+                    <div id="quiz-reward-desc" class="text-[9px] sm:text-xs text-green-400 leading-relaxed bg-black/60 p-2.5 rounded-xl border border-green-500">
+                        REWARD: TRIPLE PLASMA + HEAL 35 HP!
+                    </div>
+                    <button id="btn-resume-battle" class="pixel-btn bg-pink-600 hover:bg-pink-500 text-white px-6 py-2.5 rounded-xl text-xs sm:text-sm mt-2">
+                        RESUME CLASH!
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Over / Victory Screen -->
+        <div id="end-screen" class="hidden absolute inset-0 bg-black/90 flex flex-col items-center justify-center p-4 text-center z-40">
+            <h2 id="end-title" class="text-2xl sm:text-4xl text-pink-500 neon-text-pink mb-2">GAME OVER</h2>
+            <p id="end-subtitle" class="text-[10px] sm:text-xs text-cyan-300 mb-4">THE DINO MAID SWEPT YOU AWAY!</p>
+
+            <div class="bg-[#180d36] border-2 border-yellow-400 rounded-xl p-4 w-full max-w-md text-[9px] sm:text-xs space-y-2 mb-5">
+                <div class="flex justify-between">
+                    <span class="text-gray-400">STAGES CLEARED:</span>
+                    <span id="end-stages" class="text-pink-400">0 / 10</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">TIME SURVIVED:</span>
+                    <span id="end-time" class="text-white">0.0s</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">RAREST ANSWER:</span>
+                    <span id="end-rarest" class="text-yellow-300">N/A</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">FINAL SCORE:</span>
+                    <span id="end-score" class="text-green-400">0</span>
+                </div>
+            </div>
+
+            <button id="btn-restart" class="pixel-btn bg-cyan-500 hover:bg-cyan-400 text-black px-6 py-3 rounded-xl text-xs sm:text-sm">
+                PLAY AGAIN
+            </button>
+        </div>
+    </div>
+
+    <!-- Mobile On-Screen Arcade Controls -->
+    <div id="mobile-controls" class="w-full max-w-3xl px-4 mt-3 justify-between items-center gap-4">
+        <div class="flex gap-2">
+            <button id="m-left" class="touch-pad-btn w-14 h-14">&larr;</button>
+            <button id="m-right" class="touch-pad-btn w-14 h-14">&rarr;</button>
+            <button id="m-jump" class="touch-pad-btn w-14 h-14">UP</button>
+        </div>
+        <div class="flex gap-2">
+            <button id="m-dash" class="touch-pad-btn w-16 h-14 border-yellow-400 text-yellow-300 text-[10px]">DASH</button>
+            <button id="m-fire" class="touch-pad-btn w-20 h-14 border-pink-500 bg-pink-700/80 text-white text-[10px]">FIRE</button>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================================
+        // 1. RETRO WEB AUDIO SYNTHESIZER (SFX ENGINE)
+        // ============================================================================
+        const sfx = {
+            ctx: null,
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            },
+            playTone(freq, endFreq, duration, type = 'square', gainVal = 0.08) {
+                try {
+                    if (!this.ctx) return;
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, now);
+                    if (endFreq && endFreq !== freq) {
+                        osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), now + duration);
+                    }
+                    gain.gain.setValueAtTime(gainVal, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + duration);
+                } catch (e) {}
+            },
+            shoot(spread = 1) {
+                this.playTone(spread > 1 ? 680 : 520, 210, 0.08, 'square', 0.06);
+            },
+            jump() {
+                this.playTone(190, 440, 0.14, 'square', 0.07);
+            },
+            dash() {
+                this.playTone(320, 120, 0.12, 'sawtooth', 0.07);
+            },
+            bossHit() {
+                this.playTone(160, 80, 0.06, 'triangle', 0.06);
+            },
+            playerHurt() {
+                this.playTone(220, 55, 0.24, 'sawtooth', 0.11);
+            },
+            roar() {
+                this.playTone(140, 52, 0.28, 'sawtooth', 0.09);
+            },
+            quizFreeze() {
+                this.playTone(440, 880, 0.22, 'sine', 0.09);
+            },
+            powerUp(rare = false) {
+                this.playTone(330, rare ? 990 : 660, 0.25, 'square', 0.09);
+            },
+            stageClear() {
+                this.playTone(392, 784, 0.35, 'square', 0.10);
+            }
+        };
+
+        // ============================================================================
+        // 2. 50-CATEGORY KRILLION TRIVIA BANK & FUZZY RARITY EVALUATOR
+        // ============================================================================
+        const TRIVIA_BANK = [
+            { prompt: "A TYPE OF FRUIT", answers: { apple: 38, banana: 28, orange: 14, grape: 8, strawberry: 5, mango: 3, kiwi: 2, dragonfruit: 1, starfruit: 1, durian: 1, lychee: 1, persimmon: 1, rambutan: 1, kumquat: 1, pawpaw: 1, fig: 2, guava: 2, papaya: 2, pomegranate: 2, passionfruit: 1, jackfruit: 1, quince: 1, yuzu: 1, acai: 1 } },
+            { prompt: "A PLANET OR DWARF PLANET", answers: { earth: 34, mars: 26, jupiter: 14, saturn: 10, venus: 6, mercury: 4, neptune: 3, uranus: 2, pluto: 2, ceres: 1, eris: 1, makemake: 1, haumea: 1 } },
+            { prompt: "A MUSICAL INSTRUMENT", answers: { guitar: 34, piano: 28, drums: 14, violin: 9, flute: 5, trumpet: 4, saxophone: 3, cello: 2, clarinet: 2, harp: 2, oboe: 1, bassoon: 1, theremin: 1, sitar: 1, marimba: 1, kalimba: 1, dulcimer: 1, lute: 1, bagpipes: 1 } },
+            { prompt: "A COLOR", answers: { blue: 35, red: 26, green: 15, yellow: 8, purple: 6, pink: 4, orange: 3, black: 2, white: 2, cyan: 1, magenta: 1, teal: 1, indigo: 1, chartreuse: 1, vermilion: 1, cerulean: 1, ochre: 1, mauve: 1 } },
+            { prompt: "A TYPE OF SPORT", answers: { soccer: 30, basketball: 25, football: 18, baseball: 10, tennis: 6, golf: 4, hockey: 3, swimming: 2, volleyball: 2, badminton: 1, fencing: 1, curling: 1, archery: 1, lacrosse: 1, squash: 1, handball: 1, 'jai alai': 1 } },
+            { prompt: "A PIZZA TOPPING", answers: { pepperoni: 42, cheese: 24, mushroom: 11, sausage: 8, pineapple: 5, bacon: 4, olive: 3, onion: 2, jalapeno: 2, anchovy: 1, artichoke: 1, spinach: 1, prosciutto: 1, basil: 1, truffle: 1 } },
+            { prompt: "A COUNTRY IN EUROPE", answers: { france: 28, germany: 22, italy: 18, spain: 12, england: 8, 'united kingdom': 6, poland: 3, greece: 3, sweden: 2, norway: 2, portugal: 2, switzerland: 2, ireland: 2, estonia: 1, latvia: 1, malta: 1, andorra: 1, monaco: 1, liechtenstein: 1, 'san marino': 1, slovenia: 1, moldova: 1 } },
+            { prompt: "A WILD BIG CAT OR FELINE", answers: { lion: 36, tiger: 30, leopard: 12, cheetah: 10, jaguar: 5, panther: 4, cougar: 2, puma: 2, lynx: 1, ocelot: 1, serval: 1, caracal: 1, margay: 1, 'snow leopard': 1 } },
+            { prompt: "A DESSERT OR SWEET TREAT", answers: { 'ice cream': 34, cake: 26, cookie: 15, brownie: 9, pie: 6, donut: 4, cupcake: 3, cheesecake: 2, pudding: 2, tiramisu: 1, baklava: 1, macaron: 1, cannoli: 1, churro: 1, flan: 1, mochi: 1, eclair: 1 } },
+            { prompt: "A SUPERHERO", answers: { spiderman: 32, batman: 28, superman: 18, 'iron man': 9, 'wonder woman': 5, hulk: 3, thor: 3, flash: 2, 'captain america': 2, wolverine: 2, aquaman: 1, daredevil: 1, nightwing: 1, zatanna: 1, 'static shock': 1, 'moon knight': 1 } },
+            { prompt: "A TYPE OF DINOSAUR", answers: { tyrannosaurus: 35, trex: 35, triceratops: 22, velociraptor: 16, stegosaurus: 10, brachiosaurus: 6, pterodactyl: 4, ankylosaurus: 2, spinosaurus: 2, diplodocus: 1, allosaurus: 1, iguanodon: 1, parasaurolophus: 1, pachycephalosaurus: 1, therizinosaurus: 1 } },
+            { prompt: "A VEGETABLE", answers: { carrot: 32, broccoli: 25, potato: 14, tomato: 9, corn: 7, spinach: 4, lettuce: 3, onion: 3, cucumber: 2, celery: 2, asparagus: 1, zucchini: 1, eggplant: 1, radish: 1, turnip: 1, parsnip: 1, rutabaga: 1, kohlrabi: 1, okra: 1 } },
+            { prompt: "A DRINK OR BEVERAGE", answers: { water: 36, soda: 22, coffee: 15, tea: 10, juice: 7, milk: 4, lemonade: 3, 'hot chocolate': 2, smoothie: 2, kombucha: 1, horchata: 1, matcha: 1, kefir: 1, 'yerba mate': 1, lassi: 1 } },
+            { prompt: "AN ITEM OF CLOTHING", answers: { shirt: 34, pants: 25, shoes: 14, jacket: 8, hat: 6, socks: 5, dress: 4, sweater: 3, shorts: 2, coat: 2, scarf: 1, gloves: 1, vest: 1, cardigan: 1, poncho: 1, kimono: 1, tunic: 1 } },
+            { prompt: "A JOB OR PROFESSION", answers: { doctor: 30, teacher: 24, firefighter: 14, police: 10, chef: 7, engineer: 5, nurse: 4, lawyer: 3, pilot: 2, artist: 2, architect: 1, geologist: 1, blacksmith: 1, archivist: 1, actuary: 1, cartographer: 1 } },
+            { prompt: "A MYTHICAL CREATURE", answers: { dragon: 38, unicorn: 24, phoenix: 12, mermaid: 9, vampire: 6, werewolf: 4, griffin: 3, centaur: 2, minotaur: 2, kraken: 1, basilisk: 1, chimera: 1, manticore: 1, kitsune: 1, kelpie: 1, selkie: 1 } },
+            { prompt: "A HOLIDAY", answers: { christmas: 38, halloween: 24, thanksgiving: 14, easter: 9, 'new year': 6, 'valentines day': 4, 'fourth of july': 3, hanukkah: 2, 'st patricks day': 2, 'labor day': 1, diwali: 1, kwanzaa: 1, 'boxing day': 1, solstice: 1 } },
+            { prompt: "SOMETHING IN A BEDROOM", answers: { bed: 42, pillow: 22, lamp: 11, dresser: 8, blanket: 6, closet: 4, desk: 3, mirror: 2, rug: 2, nightstand: 1, bolster: 1, duvet: 1, wardrobe: 1, vanity: 1 } },
+            { prompt: "A TYPE OF BIRD", answers: { eagle: 28, robin: 20, pigeon: 15, crow: 11, owl: 8, parrot: 6, penguin: 4, flamingo: 3, hawk: 3, sparrow: 2, pelican: 1, puffin: 1, toucan: 1, kingfisher: 1, albatross: 1, cassowary: 1, kiwi: 1 } },
+            { prompt: "A BREAKFAST FOOD", answers: { eggs: 32, pancakes: 25, bacon: 16, cereal: 11, waffles: 7, toast: 4, oatmeal: 3, sausage: 2, bagel: 2, hashbrowns: 1, croissant: 1, crepe: 1, frittata: 1, shakshuka: 1 } },
+            { prompt: "A TOOL IN A TOOLBOX", answers: { hammer: 40, screwdriver: 26, wrench: 14, pliers: 8, saw: 5, drill: 3, 'tape measure': 2, level: 2, chisel: 1, mallet: 1, socket: 1, awl: 1, caliper: 1, ratchet: 1 } },
+            { prompt: "A DOG BREED", answers: { 'golden retriever': 28, labrador: 22, bulldog: 14, poodle: 10, 'german shepherd': 9, beagle: 6, husky: 4, chihuahua: 3, pug: 2, corgi: 2, dachshund: 1, greyhound: 1, basenji: 1, borzoi: 1, samoyed: 1, akita: 1 } },
+            { prompt: "SOMETHING AT THE BEACH", answers: { sand: 34, water: 24, towel: 13, umbrella: 9, seashell: 7, sunscreen: 5, surfboard: 3, crab: 3, seagull: 2, cooler: 1, driftwood: 1, kelp: 1, sandcastle: 1, lifeguard: 1 } },
+            { prompt: "A VIDEO GAME CHARACTER", answers: { mario: 36, sonic: 22, pikachu: 15, link: 9, 'master chief': 6, kirby: 4, pacman: 3, kratos: 2, samus: 2, 'donkey kong': 2, yoshi: 1, megaman: 1, 'solid snake': 1, cloud: 1, doomguy: 1, celeste: 1 } },
+            { prompt: "AN OBJECT IN SPACE", answers: { star: 32, moon: 24, planet: 16, sun: 10, asteroid: 6, comet: 4, 'black hole': 3, galaxy: 2, meteor: 2, nebula: 1, pulsar: 1, quasar: 1, supernova: 1, exoplanet: 1 } },
+            { prompt: "A TYPE OF FLOWER", answers: { rose: 38, sunflower: 22, daisy: 14, tulip: 10, lily: 6, dandelion: 4, orchid: 3, daffodil: 2, lavender: 1, peony: 1, hibiscus: 1, marigold: 1, chrysanthemum: 1, hydrangea: 1 } },
+            { prompt: "A PIECE OF FURNITURE", answers: { chair: 32, table: 25, couch: 16, sofa: 14, bed: 10, desk: 6, bookshelf: 4, dresser: 3, cabinet: 2, ottoman: 1, credenza: 1, chaise: 1, armoire: 1, settee: 1 } },
+            { prompt: "A GEOMETRIC SHAPE", answers: { circle: 32, square: 28, triangle: 18, rectangle: 9, star: 5, oval: 3, diamond: 2, pentagon: 2, hexagon: 1, octagon: 1, trapezoid: 1, rhombus: 1, dodecahedron: 1, icosahedron: 1 } },
+            { prompt: "A SEA CREATURE", answers: { shark: 30, whale: 22, dolphin: 16, octopus: 10, fish: 8, jellyfish: 5, crab: 3, turtle: 3, starfish: 2, seahorse: 1, squid: 1, narwhal: 1, 'manta ray': 1, anglerfish: 1, cuttlefish: 1 } },
+            { prompt: "A WEATHER CONDITION", answers: { rain: 34, snow: 24, sun: 15, sunny: 15, wind: 9, storm: 6, thunder: 4, tornado: 3, hurricane: 2, fog: 2, hail: 1, sleet: 1, blizzard: 1, drizzle: 1, monsoon: 1 } },
+            { prompt: "A SCHOOL SUBJECT", answers: { math: 36, science: 24, english: 15, history: 12, art: 5, music: 3, gym: 2, geography: 2, biology: 1, chemistry: 1, physics: 1, algebra: 1, calculus: 1, philosophy: 1 } },
+            { prompt: "A KITCHEN APPLIANCE", answers: { microwave: 30, toaster: 24, refrigerator: 16, fridge: 16, oven: 12, blender: 7, stove: 5, dishwasher: 3, 'coffee maker': 2, mixer: 1, 'air fryer': 1, kettle: 1, 'slow cooker': 1, 'food processor': 1 } },
+            { prompt: "A MODE OF TRANSPORTATION", answers: { car: 38, bus: 20, train: 14, airplane: 10, plane: 10, bike: 7, bicycle: 7, boat: 4, subway: 3, motorcycle: 2, helicopter: 1, scooter: 1, ferry: 1, tram: 1, monorail: 1 } },
+            { prompt: "A BOARD GAME", answers: { monopoly: 38, chess: 22, checkers: 14, scrabble: 9, clue: 6, risk: 4, uno: 3, battleship: 2, catan: 2, sorry: 1, life: 1, backgammon: 1, pandemic: 1, carcassonne: 1 } },
+            { prompt: "A MONTH OF THE YEAR", answers: { january: 22, december: 18, july: 14, june: 10, october: 9, august: 7, may: 6, april: 5, march: 4, september: 3, february: 2, november: 2 } },
+            { prompt: "A CHEMICAL ELEMENT", answers: { oxygen: 28, gold: 22, hydrogen: 16, carbon: 10, iron: 8, silver: 6, helium: 4, nitrogen: 3, copper: 2, neon: 1, xenon: 1, bismuth: 1, tungsten: 1, osmium: 1, gallium: 1 } },
+            { prompt: "A TYPE OF TREE", answers: { oak: 34, pine: 24, maple: 16, birch: 8, willow: 6, palm: 5, redwood: 3, apple: 2, cedar: 2, spruce: 1, sequoia: 1, cypress: 1, baobab: 1, banyan: 1 } },
+            { prompt: "AN INSECT OR BUG", answers: { ant: 30, bee: 24, butterfly: 15, spider: 10, beetle: 7, mosquito: 5, fly: 4, ladybug: 3, grasshopper: 2, dragonfly: 1, mantis: 1, cricket: 1, cicada: 1, weevil: 1 } },
+            { prompt: "A BODY PART", answers: { arm: 26, leg: 24, head: 18, hand: 12, foot: 8, eye: 5, nose: 3, ear: 2, finger: 2, elbow: 1, knee: 1, clavicle: 1, spleen: 1, patella: 1 } },
+            { prompt: "A TYPE OF PASTA", answers: { spaghetti: 40, macaroni: 22, penne: 12, fettuccine: 8, ravioli: 6, lasagna: 5, linguine: 3, rigatoni: 2, fusilli: 1, farfalle: 1, orzo: 1, gnocchi: 1, tortellini: 1, cavatappi: 1 } },
+            { prompt: "A TYPE OF CHEESE", answers: { cheddar: 36, mozzarella: 26, american: 12, swiss: 9, parmesan: 7, provolone: 4, brie: 2, gouda: 2, feta: 1, gorgonzola: 1, gruyere: 1, camembert: 1, manchego: 1 } },
+            { prompt: "A PRECIOUS GEMSTONE", answers: { diamond: 40, ruby: 22, emerald: 16, sapphire: 10, pearl: 4, amethyst: 3, opal: 2, topaz: 1, jade: 1, garnet: 1, turquoise: 1, alexandrite: 1, tanzanite: 1 } },
+            { prompt: "A TYPE OF HAT", answers: { 'baseball cap': 30, cap: 28, beanie: 18, 'cowboy hat': 14, 'top hat': 10, fedora: 6, helmet: 4, 'sun hat': 3, 'bucket hat': 2, beret: 1, sombrero: 1, bowler: 1, trilby: 1, fez: 1 } },
+            { prompt: "A CAMPING ITEM", answers: { tent: 38, 'sleeping bag': 24, flashlight: 14, campfire: 8, marshmallow: 6, backpack: 4, lantern: 3, compass: 2, canteen: 1, tarp: 1, hammock: 1, paracord: 1 } },
+            { prompt: "A SANDWICH INGREDIENT", answers: { bread: 30, cheese: 24, lettuce: 15, ham: 11, turkey: 8, tomato: 5, mayo: 4, bacon: 3, mustard: 2, pickle: 1, avocado: 1, salami: 1, sprouts: 1 } },
+            { prompt: "A TYPE OF BOAT OR SHIP", answers: { sailboat: 28, yacht: 20, 'cruise ship': 16, canoe: 12, kayak: 9, speedboat: 6, submarine: 4, ferry: 3, rowboat: 2, catamaran: 1, schooner: 1, gondola: 1, galleon: 1 } },
+            { prompt: "A FARM ANIMAL", answers: { cow: 34, pig: 24, chicken: 16, horse: 12, sheep: 7, goat: 4, duck: 2, turkey: 1, rooster: 1, donkey: 1, alpaca: 1, llama: 1 } },
+            { prompt: "A SPICE OR HERB", answers: { salt: 28, pepper: 26, cinnamon: 15, garlic: 10, basil: 7, oregano: 5, paprika: 3, cumin: 2, ginger: 2, thyme: 1, rosemary: 1, turmeric: 1, saffron: 1, cardamom: 1 } },
+            { prompt: "SOMETHING IN A WALLET", answers: { money: 36, cash: 32, 'credit card': 22, id: 14, 'driver license': 10, coins: 5, receipt: 4, photo: 3, 'debit card': 3, 'gift card': 2, stamp: 1, 'business card': 1 } },
+            { prompt: "A SUPERPOWER", answers: { flight: 34, flying: 34, invisibility: 24, 'super strength': 16, telepathy: 8, teleportation: 6, 'super speed': 5, 'laser eyes': 3, 'time travel': 2, telekinesis: 1, shapeshifting: 1, healing: 1, pyrokinesis: 1 } },
+            { prompt: "A TYPE OF CANDY", answers: { chocolate: 36, skittles: 20, snickers: 15, starburst: 10, 'gummy bears': 8, lollipop: 5, twix: 3, reeses: 2, taffy: 1, licorice: 1, nougat: 1, marzipan: 1, butterscotch: 1 } },
+            { prompt: "A MUSICAL GENRE", answers: { pop: 32, rock: 26, 'hip hop': 16, rap: 15, country: 10, jazz: 6, classical: 4, metal: 3, electronic: 2, reggae: 1, blues: 1, folk: 1, synthwave: 1, bluegrass: 1 } },
+            { prompt: "A TYPE OF SHOE OR FOOTWEAR", answers: { sneakers: 36, boots: 24, sandals: 14, heels: 9, slippers: 6, loafers: 4, flats: 3, crocs: 2, cleats: 2, moccasins: 1, clogs: 1, espadrilles: 1, oxfords: 1 } },
+            { prompt: "SOMETHING IN A CLASSROOM", answers: { desk: 34, chair: 24, whiteboard: 15, chalkboard: 12, pencil: 8, teacher: 5, book: 4, backpack: 3, clock: 2, globe: 1, stapler: 1, projector: 1, protractor: 1 } },
+            { prompt: "A TYPE OF NUT OR SEED", answers: { peanut: 34, almond: 24, walnut: 14, cashew: 10, pistachio: 7, pecan: 4, hazelnut: 3, 'sunflower seed': 2, macadamia: 1, chestnut: 1, pine: 1, sesame: 1, chia: 1 } },
+            { prompt: "A COUNTRY IN ASIA", answers: { china: 32, japan: 26, india: 18, 'south korea': 10, thailand: 5, vietnam: 4, indonesia: 3, philippines: 2, malaysia: 1, singapore: 1, nepal: 1, mongolia: 1, bhutan: 1 } },
+            { prompt: "A TYPE OF DANCE", answers: { ballet: 32, salsa: 22, 'hip hop': 16, tango: 10, waltz: 7, tap: 5, breakdance: 4, swing: 2, jazz: 2, polka: 1, flamenco: 1, foxtrot: 1, cha: 1 } },
+            { prompt: "SOMETHING THAT FLIES", answers: { bird: 36, airplane: 26, plane: 25, butterfly: 12, bee: 8, helicopter: 5, bat: 4, kite: 3, drone: 2, dragonfly: 1, glider: 1, blimp: 1, hummingbird: 1 } },
+            { prompt: "A CARTOON CHARACTER", answers: { spongebob: 34, 'mickey mouse': 24, 'bugs bunny': 15, homer: 10, scooby: 6, tom: 4, jerry: 4, pikachu: 3, garfield: 2, 'charlie brown': 1, popeye: 1, dexter: 1, courage: 1 } },
+            { prompt: "A TYPE OF SOUP", answers: { 'chicken noodle': 40, tomato: 24, vegetable: 12, 'clam chowder': 8, broccoli: 5, mushroom: 4, minestrone: 3, ramen: 2, miso: 2, gazpacho: 1, bisque: 1, borscht: 1, pho: 1 } },
+            { prompt: "A REPTILE OR AMPHIBIAN", answers: { snake: 32, lizard: 22, turtle: 16, frog: 12, crocodile: 7, alligator: 6, gecko: 3, iguana: 2, chameleon: 1, toad: 1, salamander: 1, newt: 1, komodo: 1 } },
+            { prompt: "SOMETHING IN A BATHROOM", answers: { toilet: 34, sink: 24, shower: 16, toothbrush: 10, mirror: 6, towel: 4, soap: 3, bathtub: 2, toothpaste: 1, shampoo: 1, plunger: 1, loofah: 1 } },
+            { prompt: "A TYPE OF BERRY", answers: { strawberry: 42, blueberry: 26, raspberry: 14, blackberry: 9, cranberry: 4, cherry: 2, gooseberry: 1, elderberry: 1, boysenberry: 1, mulberry: 1, cloudberry: 1 } },
+            { prompt: "A FICTIONAL WIZARD OR MAGICIAN", answers: { 'harry potter': 42, gandalf: 22, merlin: 14, dumbledore: 10, 'doctor strange': 5, voldemort: 3, houdini: 2, oz: 1, saruman: 1, radagast: 1, morgana: 1 } },
+            { prompt: "SOMETHING MADE OF WOOD", answers: { table: 30, chair: 24, pencil: 16, door: 10, tree: 8, house: 5, bat: 3, desk: 2, guitar: 1, barrel: 1, canoe: 1, violin: 1 } },
+            { prompt: "A TYPE OF BREAD", answers: { white: 32, wheat: 24, sourdough: 16, baguette: 10, rye: 6, bagel: 4, croissant: 3, pita: 2, brioche: 1, ciabatta: 1, focaccia: 1, naan: 1, pumpernickel: 1 } },
+            { prompt: "A WINTER ACTIVITY", answers: { skiing: 34, snowboarding: 24, sledding: 16, 'ice skating': 12, 'snowball fight': 6, snowman: 4, hockey: 2, snowshoeing: 1, curling: 1, 'ice fishing': 1 } },
+            { prompt: "SOMETHING WITH WHEELS", answers: { car: 40, bike: 24, bicycle: 22, bus: 12, truck: 8, skateboard: 6, train: 4, motorcycle: 3, scooter: 2, stroller: 1, wheelbarrow: 1, unicycle: 1 } },
+            { prompt: "A TYPE OF FISH", answers: { salmon: 30, goldfish: 24, tuna: 16, shark: 10, trout: 7, clownfish: 5, bass: 4, catfish: 2, cod: 1, swordfish: 1, halibut: 1, tilapia: 1, barracuda: 1 } },
+            { prompt: "A PART OF A CAR", answers: { wheel: 30, tire: 26, engine: 16, 'steering wheel': 10, door: 6, seat: 4, windshield: 3, trunk: 2, headlight: 1, bumper: 1, radiator: 1, alternator: 1, carburetor: 1 } }
+        ];
+
+        function levenshteinDist(a, b) {
+            const dp = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+            for (let i = 0; i <= a.length; i++) dp[i][0] = i;
+            for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+            for (let i = 1; i <= a.length; i++) {
+                for (let j = 1; j <= b.length; j++) {
+                    const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+                    dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+                }
+            }
+            return dp[a.length][b.length];
+        }
+
+        function evaluateKrillionAnswer(rawInput, question) {
+            const cleaned = (rawInput || '').trim().toLowerCase().replace(/[^a-z0-9\s]/g, '');
+            if (!cleaned || cleaned.length < 2) {
+                return { valid: false, pct: 100, corrected: '', wasCorrected: false };
+            }
+
+            const entries = Object.entries(question.answers);
+            // Direct match
+            if (question.answers[cleaned] !== undefined) {
+                return { valid: true, pct: question.answers[cleaned], corrected: cleaned.toUpperCase(), wasCorrected: false };
+            }
+
+            // Fuzzy spell-check match
+            let bestKey = null;
+            let bestDist = Infinity;
+            for (const [key] of entries) {
+                const dist = levenshteinDist(cleaned, key);
+                const maxAllowed = key.length <= 4 ? 1 : 2;
+                if (dist <= maxAllowed && dist < bestDist) {
+                    bestDist = dist;
+                    bestKey = key;
+                }
+            }
+
+            if (bestKey) {
+                return {
+                    valid: true,
+                    pct: question.answers[bestKey],
+                    corrected: bestKey.toUpperCase(),
+                    wasCorrected: true
+                };
+            }
+
+            // Accept genuine multi-letter English words as an ultra-rare creative answer (2% - 8%)
+            const hasVowel = /[aeiouy]/.test(cleaned);
+            const noTripleRepeat = !/(.)\1\1/.test(cleaned);
+            if (cleaned.length >= 3 && cleaned.length <= 22 && hasVowel && noTripleRepeat) {
+                const hash = cleaned.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+                const rarePct = 2 + (hash % 7);
+                return { valid: true, pct: rarePct, corrected: cleaned.toUpperCase(), wasCorrected: false };
+            }
+
+            return { valid: false, pct: 100, corrected: cleaned.toUpperCase(), wasCorrected: false };
+        }
+
+        // ============================================================================
+        // 3. 25-STAGE BOSS CONFIGURATION (HARDER SCALING + 15% LESS BOSS DAMAGE)
+        // ============================================================================
+        const BOSS_STAGES = [
+            {
+                stage: 1,
+                name: "APPRENTICE MAID REX",
+                subtitle: "STAGE 1/25 - SPECIAL: SOAP BUBBLE BARRAGE",
+                specialName: "SOAP BUBBLE BARRAGE",
+                specialType: 1,
+                maxHp: 460,
+                scaleColor: "#38b764",
+                scaleDark: "#1e6f50",
+                accentColor: "#ff5ca8",
+                speed: 96,
+                attackInterval: 1.85,
+                damageMult: 0.95,
+                crown: false,
+                orbitCups: 1,
+                auraColor: null
+            },
+            {
+                stage: 2,
+                name: "PARLOR MAID RAPTOR-REX",
+                subtitle: "STAGE 2/25 - SPECIAL: BROOMSTICK CHARGE",
+                specialName: "BROOMSTICK CHARGE",
+                specialType: 2,
+                maxHp: 680,
+                scaleColor: "#29adff",
+                scaleDark: "#1d2b53",
+                accentColor: "#00f0ff",
+                speed: 112,
+                attackInterval: 1.72,
+                damageMult: 1.05,
+                crown: false,
+                orbitCups: 2,
+                auraColor: "rgba(0, 240, 255, 0.14)"
+            },
+            {
+                stage: 3,
+                name: "KITCHEN MAID ALLOSAUR",
+                subtitle: "STAGE 3/25 - SPECIAL: BOILING KETTLE GEYSER",
+                specialName: "BOILING KETTLE GEYSER",
+                specialType: 3,
+                maxHp: 940,
+                scaleColor: "#ff77a8",
+                scaleDark: "#7e2553",
+                accentColor: "#ffd700",
+                speed: 124,
+                attackInterval: 1.60,
+                damageMult: 1.12,
+                crown: false,
+                orbitCups: 2,
+                auraColor: "rgba(255, 119, 168, 0.16)"
+            },
+            {
+                stage: 4,
+                name: "HEAD MAID TYRANNOSAUR",
+                subtitle: "STAGE 4/25 - SPECIAL: SILVERWARE FAN VOLLEY",
+                specialName: "SILVERWARE FAN VOLLEY",
+                specialType: 4,
+                maxHp: 1250,
+                scaleColor: "#ff6b35",
+                scaleDark: "#7c2d12",
+                accentColor: "#e2e8f0",
+                speed: 136,
+                attackInterval: 1.48,
+                damageMult: 1.20,
+                crown: true,
+                orbitCups: 3,
+                auraColor: "rgba(255, 107, 53, 0.18)"
+            },
+            {
+                stage: 5,
+                name: "BUTLER-GENERAL SPINOSAUR",
+                subtitle: "STAGE 5/25 - SPECIAL: CHANDELIER SHATTER",
+                specialName: "CHANDELIER SHATTER",
+                specialType: 5,
+                maxHp: 1620,
+                scaleColor: "#a855f7",
+                scaleDark: "#4c1d95",
+                accentColor: "#ffd700",
+                speed: 148,
+                attackInterval: 1.36,
+                damageMult: 1.28,
+                crown: true,
+                orbitCups: 3,
+                auraColor: "rgba(168, 85, 247, 0.22)"
+            },
+            {
+                stage: 6,
+                name: "ROYAL VALET GIGANOTOSAUR",
+                subtitle: "STAGE 6/25 - SPECIAL: POLISH MIRROR BEAM",
+                specialName: "POLISH MIRROR BEAM",
+                specialType: 6,
+                maxHp: 2050,
+                scaleColor: "#06b6d4",
+                scaleDark: "#164e63",
+                accentColor: "#38bdf8",
+                speed: 160,
+                attackInterval: 1.25,
+                damageMult: 1.36,
+                crown: true,
+                orbitCups: 4,
+                auraColor: "rgba(6, 182, 212, 0.24)"
+            },
+            {
+                stage: 7,
+                name: "GRAND ARCH-MAID OMEGA REX",
+                subtitle: "STAGE 7/25 - SPECIAL: VACUUM VORTEX PULL",
+                specialName: "VACUUM VORTEX PULL",
+                specialType: 7,
+                maxHp: 2550,
+                scaleColor: "#ec4899",
+                scaleDark: "#831843",
+                accentColor: "#c084fc",
+                speed: 172,
+                attackInterval: 1.15,
+                damageMult: 1.45,
+                crown: true,
+                orbitCups: 4,
+                auraColor: "rgba(236, 72, 153, 0.26)"
+            },
+            {
+                stage: 8,
+                name: "CELESTIAL EMPRESS REX",
+                subtitle: "STAGE 8/25 - SPECIAL: SOLAR DUSTER NOVA",
+                specialName: "SOLAR DUSTER NOVA",
+                specialType: 8,
+                maxHp: 3150,
+                scaleColor: "#f59e0b",
+                scaleDark: "#78350f",
+                accentColor: "#fef08a",
+                speed: 184,
+                attackInterval: 1.05,
+                damageMult: 1.55,
+                crown: true,
+                orbitCups: 5,
+                auraColor: "rgba(245, 158, 11, 0.30)"
+            },
+            {
+                stage: 9,
+                name: "CHRONO-MAID APEX REX",
+                subtitle: "STAGE 9/25 - SPECIAL: GRANDFATHER CLOCK SPIRAL",
+                specialName: "GRANDFATHER CLOCK SPIRAL",
+                specialType: 9,
+                maxHp: 3820,
+                scaleColor: "#10b981",
+                scaleDark: "#064e3b",
+                accentColor: "#39ff14",
+                speed: 194,
+                attackInterval: 0.96,
+                damageMult: 1.65,
+                crown: true,
+                orbitCups: 5,
+                auraColor: "rgba(57, 255, 20, 0.32)"
+            },
+            {
+                stage: 10,
+                name: "VOID-MAID COMMANDER EX",
+                subtitle: "STAGE 10/25 - SPECIAL: MINI MAID RAPTOR SQUAD",
+                specialName: "MINI MAID RAPTOR SQUAD",
+                specialType: 10,
+                maxHp: 4600,
+                scaleColor: "#1e1633",
+                scaleDark: "#090512",
+                accentColor: "#ff2a4b",
+                speed: 205,
+                attackInterval: 0.90,
+                damageMult: 1.72,
+                crown: true,
+                orbitCups: 6,
+                auraColor: "rgba(255, 42, 75, 0.38)"
+            },
+            {
+                stage: 11,
+                name: "CELLAR STEWARD CARNOTAUR",
+                subtitle: "STAGE 11/25 - SPECIAL: ACIDIC BLEACH BUBBLES",
+                specialName: "ACIDIC BLEACH BUBBLES",
+                specialType: 1,
+                maxHp: 5450,
+                scaleColor: "#84cc16",
+                scaleDark: "#365314",
+                accentColor: "#bef264",
+                speed: 210,
+                attackInterval: 0.88,
+                damageMult: 1.78,
+                crown: true,
+                orbitCups: 6,
+                auraColor: "rgba(132, 204, 22, 0.30)"
+            },
+            {
+                stage: 12,
+                name: "BALLROOM MATRON CARCHARO",
+                subtitle: "STAGE 12/25 - SPECIAL: SUPERSONIC SWEEP DASH",
+                specialName: "SUPERSONIC SWEEP DASH",
+                specialType: 2,
+                maxHp: 6400,
+                scaleColor: "#e11d48",
+                scaleDark: "#881337",
+                accentColor: "#fda4af",
+                speed: 216,
+                attackInterval: 0.86,
+                damageMult: 1.84,
+                crown: true,
+                orbitCups: 6,
+                auraColor: "rgba(225, 29, 72, 0.32)"
+            },
+            {
+                stage: 13,
+                name: "SCULLERY DUCHESS BARYONYX",
+                subtitle: "STAGE 13/25 - SPECIAL: SCALDING SAMOVAR BLAST",
+                specialName: "SCALDING SAMOVAR BLAST",
+                specialType: 3,
+                maxHp: 7450,
+                scaleColor: "#0ea5e9",
+                scaleDark: "#0c4a6e",
+                accentColor: "#bae6fd",
+                speed: 222,
+                attackInterval: 0.84,
+                damageMult: 1.90,
+                crown: true,
+                orbitCups: 6,
+                auraColor: "rgba(14, 165, 233, 0.32)"
+            },
+            {
+                stage: 14,
+                name: "BANQUET BARONESS THERIZINO",
+                subtitle: "STAGE 14/25 - SPECIAL: PLATINUM CUTLERY STORM",
+                specialName: "PLATINUM CUTLERY STORM",
+                specialType: 4,
+                maxHp: 8600,
+                scaleColor: "#94a3b8",
+                scaleDark: "#334155",
+                accentColor: "#f8fafc",
+                speed: 228,
+                attackInterval: 0.82,
+                damageMult: 1.96,
+                crown: true,
+                orbitCups: 7,
+                auraColor: "rgba(148, 163, 184, 0.34)"
+            },
+            {
+                stage: 15,
+                name: "CATHEDRAL GOVERNESS ACRO",
+                subtitle: "STAGE 15/25 - SPECIAL: PRISM CHANDELIER RAIN",
+                specialName: "PRISM CHANDELIER RAIN",
+                specialType: 5,
+                maxHp: 9850,
+                scaleColor: "#eab308",
+                scaleDark: "#713f12",
+                accentColor: "#fef08a",
+                speed: 234,
+                attackInterval: 0.80,
+                damageMult: 2.02,
+                crown: true,
+                orbitCups: 7,
+                auraColor: "rgba(234, 179, 8, 0.35)"
+            },
+            {
+                stage: 16,
+                name: "HALL OF MIRRORS MONARCH",
+                subtitle: "STAGE 16/25 - SPECIAL: HYPER-REFLECTOR RAY",
+                specialName: "HYPER-REFLECTOR RAY",
+                specialType: 6,
+                maxHp: 11200,
+                scaleColor: "#22d3ee",
+                scaleDark: "#155e75",
+                accentColor: "#ffffff",
+                speed: 240,
+                attackInterval: 0.78,
+                damageMult: 2.08,
+                crown: true,
+                orbitCups: 7,
+                auraColor: "rgba(34, 211, 238, 0.36)"
+            },
+            {
+                stage: 17,
+                name: "ABYSSAL HOUSEKEEPER REX",
+                subtitle: "STAGE 17/25 - SPECIAL: SINGULARITY DYSON PULL",
+                specialName: "SINGULARITY DYSON PULL",
+                specialType: 7,
+                maxHp: 12700,
+                scaleColor: "#7e22ce",
+                scaleDark: "#3b0764",
+                accentColor: "#e879f9",
+                speed: 245,
+                attackInterval: 0.76,
+                damageMult: 2.14,
+                crown: true,
+                orbitCups: 8,
+                auraColor: "rgba(126, 34, 206, 0.38)"
+            },
+            {
+                stage: 18,
+                name: "STARLIGHT VALKYRIE REX",
+                subtitle: "STAGE 18/25 - SPECIAL: SUPERNOVA DUSTER BURST",
+                specialName: "SUPERNOVA DUSTER BURST",
+                specialType: 8,
+                maxHp: 14300,
+                scaleColor: "#fb923c",
+                scaleDark: "#7c2d12",
+                accentColor: "#fde047",
+                speed: 250,
+                attackInterval: 0.74,
+                damageMult: 2.20,
+                crown: true,
+                orbitCups: 8,
+                auraColor: "rgba(251, 146, 60, 0.38)"
+            },
+            {
+                stage: 19,
+                name: "ETERNAL PENDULUM MATRIARCH",
+                subtitle: "STAGE 19/25 - SPECIAL: PARADOX COG BARRAGE",
+                specialName: "PARADOX COG BARRAGE",
+                specialType: 9,
+                maxHp: 16000,
+                scaleColor: "#14b8a6",
+                scaleDark: "#134e4a",
+                accentColor: "#5eead4",
+                speed: 255,
+                attackInterval: 0.72,
+                damageMult: 2.26,
+                crown: true,
+                orbitCups: 8,
+                auraColor: "rgba(20, 184, 166, 0.40)"
+            },
+            {
+                stage: 20,
+                name: "CRIMSON LEGION PACK-MOTHER",
+                subtitle: "STAGE 20/25 - SPECIAL: ROYAL RAPTOR BATTALION",
+                specialName: "ROYAL RAPTOR BATTALION",
+                specialType: 10,
+                maxHp: 17900,
+                scaleColor: "#dc2626",
+                scaleDark: "#450a0a",
+                accentColor: "#fca5a5",
+                speed: 260,
+                attackInterval: 0.70,
+                damageMult: 2.32,
+                crown: true,
+                orbitCups: 8,
+                auraColor: "rgba(220, 38, 38, 0.40)"
+            },
+            {
+                stage: 21,
+                name: "NEON PALACE ARCHDUCHESS",
+                subtitle: "STAGE 21/25 - SPECIAL: LASER MIRROR ANNIHILATOR",
+                specialName: "LASER MIRROR ANNIHILATOR",
+                specialType: 6,
+                maxHp: 20000,
+                scaleColor: "#d946ef",
+                scaleDark: "#4a044e",
+                accentColor: "#00f0ff",
+                speed: 265,
+                attackInterval: 0.68,
+                damageMult: 2.38,
+                crown: true,
+                orbitCups: 9,
+                auraColor: "rgba(217, 70, 239, 0.42)"
+            },
+            {
+                stage: 22,
+                name: "OBSIDIAN CITADEL WARDEN",
+                subtitle: "STAGE 22/25 - SPECIAL: METEOR CHANDELIER CRASH",
+                specialName: "METEOR CHANDELIER CRASH",
+                specialType: 5,
+                maxHp: 22300,
+                scaleColor: "#475569",
+                scaleDark: "#0f172a",
+                accentColor: "#f59e0b",
+                speed: 270,
+                attackInterval: 0.66,
+                damageMult: 2.44,
+                crown: true,
+                orbitCups: 9,
+                auraColor: "rgba(71, 85, 105, 0.42)"
+            },
+            {
+                stage: 23,
+                name: "ASTRAL SERAPHIM DINO-MAID",
+                subtitle: "STAGE 23/25 - SPECIAL: CELESTIAL RING NOVA",
+                specialName: "CELESTIAL RING NOVA",
+                specialType: 8,
+                maxHp: 24800,
+                scaleColor: "#f43f5e",
+                scaleDark: "#4c0519",
+                accentColor: "#fef08a",
+                speed: 275,
+                attackInterval: 0.64,
+                damageMult: 2.50,
+                crown: true,
+                orbitCups: 9,
+                auraColor: "rgba(244, 63, 94, 0.44)"
+            },
+            {
+                stage: 24,
+                name: "OMEGA CHRONO-SOVEREIGN",
+                subtitle: "STAGE 24/25 - SPECIAL: INFINITY CLOCKWORK STORM",
+                specialName: "INFINITY CLOCKWORK STORM",
+                specialType: 9,
+                maxHp: 27600,
+                scaleColor: "#059669",
+                scaleDark: "#022c22",
+                accentColor: "#a7f3d0",
+                speed: 280,
+                attackInterval: 0.62,
+                damageMult: 2.56,
+                crown: true,
+                orbitCups: 10,
+                auraColor: "rgba(5, 150, 105, 0.45)"
+            },
+            {
+                stage: 25,
+                name: "ULTIMATE VOID-EMPRESS REX EX",
+                subtitle: "STAGE 25/25 - SPECIAL: APOCALYPSE MAID LEGION",
+                specialName: "APOCALYPSE MAID LEGION",
+                specialType: 10,
+                maxHp: 31000,
+                scaleColor: "#110b24",
+                scaleDark: "#05020d",
+                accentColor: "#ff2a85",
+                speed: 288,
+                attackInterval: 0.60,
+                damageMult: 2.65,
+                crown: true,
+                orbitCups: 10,
+                auraColor: "rgba(255, 42, 133, 0.50)"
+            }
+        ];
+
+        // ============================================================================
+        // 4. PERMANENT POWERS (1-PER-GAME ON <25% ANSWERS) & TEMPORARY BUFFS
+        // ============================================================================
+        const PERMANENT_POWERS = {
+            FLAME: {
+                id: 'FLAME',
+                label: 'FLAME HANDGUNS (1.5X DMG)',
+                shortName: 'FLAME HANDGUNS',
+                damageMult: 1.5,
+                bulletColor: '#ff6b1a',
+                desc: 'PERMANENT POWER: DUAL FLAME HANDGUNS (1.5X DAMAGE)!'
+            },
+            LIGHTNING: {
+                id: 'LIGHTNING',
+                label: 'LIGHTNING (1s STUN / 10s)',
+                shortName: 'LIGHTNING STUN',
+                damageMult: 1.0,
+                bulletColor: '#ffe600',
+                desc: 'PERMANENT POWER: LIGHTNING STUNS DINO FOR 1s EVERY 10s!'
+            },
+            ICE: {
+                id: 'ICE',
+                label: 'ICE FROST (3s SLOW / 10s)',
+                shortName: 'ICE FREEZE',
+                damageMult: 1.0,
+                bulletColor: '#7dd3fc',
+                desc: 'PERMANENT POWER: ICE SLOWS DINO FOR 3s EVERY 10s!'
+            },
+            SLOWDOWN: {
+                id: 'SLOWDOWN',
+                label: 'CHRONO SLOW (50% DINO/SHOTS)',
+                shortName: 'CHRONO SLOW-DOWN',
+                damageMult: 1.0,
+                bulletColor: '#d946ef',
+                desc: 'ULTRA RARE (1-IN-50): 50% SLOW-DOWN ON DINO & PROJECTILES!'
+            }
+        };
+
+        function rollPermanentPower() {
+            // 1 in 50 chance for Chrono Slow-Down
+            if (Math.random() < (1 / 50)) {
+                return PERMANENT_POWERS.SLOWDOWN;
+            }
+            const pool = [PERMANENT_POWERS.FLAME, PERMANENT_POWERS.LIGHTNING, PERMANENT_POWERS.ICE];
+            return pool[Math.floor(Math.random() * pool.length)];
+        }
+
+        function computeTriviaReward(evalResult) {
+            if (!evalResult.valid) {
+                return {
+                    title: "INVALID OR GIBBERISH ANSWER!",
+                    desc: "NO BUFF GRANTED! +10s SHIELD WEAKNESS.",
+                    heal: 0,
+                    buff: null,
+                    newPower: null
+                };
+            }
+
+            const pct = evalResult.pct;
+            let newPower = null;
+
+            // First 1% rarity answer guarantees a permanent power (100% chance); other <10% answers have a 25% chance
+            if (!player.permanentPower && pct < 10) {
+                const isFirstOnePercent = (pct === 1 && !player.usedGuaranteedOnePct);
+                if (isFirstOnePercent) {
+                    player.usedGuaranteedOnePct = true;
+                    newPower = rollPermanentPower();
+                } else if (Math.random() < 0.25) {
+                    newPower = rollPermanentPower();
+                }
+            }
+
+            const hasFlamePower = (player.permanentPower && player.permanentPower.id === 'FLAME') || (newPower && newPower.id === 'FLAME');
+            const spreadDuration = hasFlamePower ? 5 : 10;
+
+            if (pct >= 1 && pct <= 3) {
+                const gotTriple = Math.random() < 0.75;
+                return {
+                    title: `LEGENDARY! ONLY ${pct}% SAID "${evalResult.corrected}"!`,
+                    desc: newPower
+                        ? `${newPower.desc}${gotTriple ? ` + TRIPLE PLASMA (${spreadDuration}s)` : ''} + FULL HEAL (50 HP)!`
+                        : (gotTriple
+                            ? `TRIPLE PLASMA CANNON (${spreadDuration}s, -10% DMG/BOLT) + HEAL 50 HP!`
+                            : `STANDARD BLASTER (75% TRIPLE ROLL MISSED) + HEAL 50 HP!`),
+                    heal: 50,
+                    buff: gotTriple
+                        ? { name: "TRIPLE PLASMA", spread: 3, fireRate: 0.17, damage: 15, color: "#ffd700", timer: spreadDuration }
+                        : null,
+                    newPower
+                };
+            } else if (pct >= 4 && pct <= 10) {
+                const gotDouble = Math.random() < 0.75;
+                return {
+                    title: `RARE PICK! ONLY ${pct}% SAID "${evalResult.corrected}"!`,
+                    desc: newPower
+                        ? `${newPower.desc}${gotDouble ? ` + DOUBLE SHOT (${spreadDuration}s)` : ''} + HEAL 30 HP!`
+                        : (gotDouble
+                            ? `DOUBLE SHOT (${spreadDuration}s, -5% DMG/BOLT) + HEAL 30 HP!`
+                            : `STANDARD BLASTER (75% DOUBLE ROLL MISSED) + HEAL 30 HP!`),
+                    heal: 30,
+                    buff: gotDouble
+                        ? { name: "DOUBLE SHOT", spread: 2, fireRate: 0.18, damage: 15, color: "#ff2a85", timer: spreadDuration }
+                        : null,
+                    newPower
+                };
+            } else {
+                return {
+                    title: `ANSWER (${pct}%): "${evalResult.corrected}"`,
+                    desc: "STANDARD BLASTER + SMALL HEAL (12 HP).",
+                    heal: 12,
+                    buff: null,
+                    newPower: null
+                };
+            }
+        }
+
+        // ============================================================================
+        // 5. GAME ENGINE STATE & ENTITIES
+        // ============================================================================
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const GAME_W = 800;
+        const GAME_H = 450;
+        const GROUND_Y = 392;
+        const KRILLION_INTERVAL = 15.0;
+
+        let gameState = 'START'; // START | PLAYING | QUIZ | GAMEOVER | VICTORY
+        let lastTimestamp = 0;
+        let screenShake = 0;
+
+        let stats = {
+            survivalTime: 0,
+            stagesCleared: 0,
+            rarestPct: null,
+            score: 0
+        };
+
+        let krillionTimer = KRILLION_INTERVAL;
+        let quizCountdown = 20.0;
+        let currentQuestion = null;
+        let usedQuestionIndices = new Set();
+
+        let stageTransitionTimer = 0;
+        let stageBannerData = null;
+
+        const keys = {};
+
+        const player = {
+            x: 130,
+            y: GROUND_Y,
+            w: 28,
+            h: 42,
+            vx: 0,
+            vy: 0,
+            speed: 235,
+            jumpForce: -470,
+            gravity: 1180,
+            onGround: true,
+            facing: 1,
+            hp: 100,
+            maxHp: 100,
+            invulnTimer: 0,
+            shootCooldown: 0,
+            dashTimer: 0,
+            dashCooldown: 0,
+            animFrame: 0,
+            activeBuff: null,
+            permanentPower: null,
+            powerCycleTimer: 0
+        };
+
+        const boss = {
+            stageIndex: 0,
+            x: 560,
+            y: GROUND_Y,
+            w: 116,
+            h: 132,
+            vx: -96,
+            vy: 0,
+            patrolDir: -1,
+            patrolTimer: 1.8,
+            facing: -1,
+            hp: 460,
+            maxHp: 460,
+            attackTimer: 1.4,
+            jumpCooldown: 6.5,
+            rushCooldown: 4.0,
+            attackCounter: 0,
+            isJumping: false,
+            chargeTimer: 0,
+            vortexTimer: 0,
+            stunTimer: 0,
+            iceTimer: 0,
+            hitFlash: 0,
+            animTimer: 0,
+            orbitAngle: 0
+        };
+
+        let playerBullets = [];
+        let bossProjectiles = [];
+        let miniRaptors = [];
+        let particles = [];
+        let floatingTexts = [];
+
+        // DOM References
+        const hudOverlay = document.getElementById('hud-overlay');
+        const hudPlayerHpText = document.getElementById('hud-player-hp-text');
+        const hudPlayerHpBar = document.getElementById('hud-player-hp-bar');
+        const hudBuffTag = document.getElementById('hud-buff-tag');
+        const hudPowerTag = document.getElementById('hud-power-tag');
+        const hudKrillionTimer = document.getElementById('hud-krillion-timer');
+        const hudScore = document.getElementById('hud-score');
+        const hudStageBadge = document.getElementById('hud-stage-badge');
+        const hudBossName = document.getElementById('hud-boss-name');
+        const hudBossHpBar = document.getElementById('hud-boss-hp-bar');
+        const hudBossHpText = document.getElementById('hud-boss-hp-text');
+
+        const startScreen = document.getElementById('start-screen');
+        const quizOverlay = document.getElementById('quiz-overlay');
+        const quizTimerEl = document.getElementById('quiz-timer');
+        const quizPromptEl = document.getElementById('quiz-prompt');
+        const quizInputArea = document.getElementById('quiz-input-area');
+        const quizInput = document.getElementById('quiz-input');
+        const quizResultArea = document.getElementById('quiz-result-area');
+        const quizAutocorrectNote = document.getElementById('quiz-autocorrect-note');
+        const quizRarityDisplay = document.getElementById('quiz-rarity-display');
+        const quizPctLabel = document.getElementById('quiz-pct-label');
+        const quizRarityBar = document.getElementById('quiz-rarity-bar');
+        const quizRewardDesc = document.getElementById('quiz-reward-desc');
+        const endScreen = document.getElementById('end-screen');
+
+        // ============================================================================
+        // 6. RESIZE & INPUT HANDLERS
+        // ============================================================================
+        function resizeCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = GAME_W;
+            canvas.height = GAME_H;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        window.addEventListener('keydown', (e) => {
+            if (gameState === 'QUIZ') {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (!quizInputArea.classList.contains('hidden')) {
+                        submitTriviaAnswer();
+                    } else {
+                        resumeFromQuiz();
+                    }
+                }
+                return;
+            }
+            keys[e.code] = true;
+            if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+                e.preventDefault();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        // Mobile touch bindings
+        function bindHoldButton(id, code) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const start = (e) => { e.preventDefault(); sfx.init(); keys[code] = true; };
+            const end = (e) => { e.preventDefault(); keys[code] = false; };
+            el.addEventListener('touchstart', start, { passive: false });
+            el.addEventListener('touchend', end, { passive: false });
+            el.addEventListener('mousedown', start);
+            el.addEventListener('mouseup', end);
+            el.addEventListener('mouseleave', end);
+        }
+        bindHoldButton('m-left', 'ArrowLeft');
+        bindHoldButton('m-right', 'ArrowRight');
+        bindHoldButton('m-jump', 'ArrowUp');
+        bindHoldButton('m-dash', 'ShiftLeft');
+        bindHoldButton('m-fire', 'Space');
+
+        // ============================================================================
+        // 7. HELPER SPAWNERS & STAGE PROGRESSION
+        // ============================================================================
+        function spawnParticles(x, y, color, count = 8, maxSpeed = 120) {
+            for (let i = 0; i < count; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = 25 + Math.random() * maxSpeed;
+                particles.push({
+                    x,
+                    y,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd - 30,
+                    size: 2 + Math.random() * 3,
+                    color,
+                    life: 0.35 + Math.random() * 0.3,
+                    maxLife: 0.65
+                });
+            }
+        }
+
+        function spawnFloatingText(x, y, text, color = '#ffffff') {
+            floatingTexts.push({
+                x,
+                y,
+                text,
+                color,
+                life: 1.05
+            });
+        }
+
+        function configureBossStage(idx) {
+            const cfg = BOSS_STAGES[idx];
+            boss.stageIndex = idx;
+            const scaledHp = Math.round(cfg.maxHp * 0.90);
+            boss.maxHp = scaledHp;
+            boss.hp = scaledHp;
+            boss.x = 560;
+            boss.y = GROUND_Y;
+            const roundSpeedMult = Math.pow(1.1, idx);
+            boss.vx = -cfg.speed * roundSpeedMult;
+            boss.vy = 0;
+            boss.patrolDir = -1;
+            boss.patrolTimer = 1.8;
+            boss.facing = -1;
+            boss.attackTimer = 1.25 / roundSpeedMult;
+            boss.jumpCooldown = 3.0 + Math.random() * 4.0;
+            boss.rushCooldown = 3.0 + Math.random() * 2.0;
+            boss.attackCounter = 0;
+            boss.isJumping = false;
+            boss.chargeTimer = 0;
+            boss.vortexTimer = 0;
+            boss.stunTimer = 0;
+            boss.iceTimer = 0;
+            boss.hitFlash = 0;
+        }
+
+        function startNewGame() {
+            sfx.init();
+            stats = { survivalTime: 0, stagesCleared: 0, rarestPct: null, score: 0 };
+            krillionTimer = KRILLION_INTERVAL;
+            usedQuestionIndices.clear();
+            playerBullets = [];
+            bossProjectiles = [];
+            miniRaptors = [];
+            particles = [];
+            floatingTexts = [];
+            stageTransitionTimer = 0;
+            stageBannerData = null;
+
+            player.x = 130;
+            player.y = GROUND_Y;
+            player.vx = 0;
+            player.vy = 0;
+            player.onGround = true;
+            player.facing = 1;
+            player.maxHp = 100;
+            player.hp = 100;
+            player.invulnTimer = 0;
+            player.shootCooldown = 0;
+            player.dashTimer = 0;
+            player.dashCooldown = 0;
+            player.activeBuff = null;
+            player.permanentPower = null;
+            player.powerCycleTimer = 0;
+            player.usedGuaranteedOnePct = false;
+
+            configureBossStage(0);
+
+            startScreen.classList.add('hidden');
+            endScreen.classList.add('hidden');
+            quizOverlay.classList.add('hidden');
+            hudOverlay.classList.remove('hidden');
+
+            gameState = 'PLAYING';
+            updateHUD();
+        }
+
+        function triggerStageTransition(nextStageIdx) {
+            stats.stagesCleared = nextStageIdx;
+            stats.score += 1000 * nextStageIdx;
+            sfx.stageClear();
+
+            // +10% permanent max health increase and 100% full heal after each round
+            player.maxHp = Math.round(player.maxHp * 1.10);
+            player.hp = player.maxHp;
+
+            configureBossStage(nextStageIdx);
+            bossProjectiles = [];
+            miniRaptors = [];
+            screenShake = 14;
+            stageTransitionTimer = 2.6;
+            const cfg = BOSS_STAGES[nextStageIdx];
+            stageBannerData = {
+                title: `STAGE ${cfg.stage} / ${BOSS_STAGES.length}`,
+                subtitle: cfg.name,
+                bonus: `+10% MAX HP & 100% HEAL (${player.maxHp} HP)!`
+            };
+            spawnParticles(boss.x + boss.w / 2, boss.y - boss.h / 2, cfg.accentColor, 28, 190);
+        }
+
+        function damagePlayer(rawAmount) {
+            if (player.invulnTimer > 0 || player.dashTimer > 0) return;
+            const dmg = Math.max(1, Math.round(rawAmount));
+            player.hp = Math.max(0, player.hp - dmg);
+            player.invulnTimer = 0.85;
+            screenShake = 8;
+            sfx.playerHurt();
+            spawnParticles(player.x + player.w / 2, player.y - player.h / 2, '#ff2a85', 12, 130);
+            spawnFloatingText(player.x + 10, player.y - player.h - 8, `-${dmg}`, '#ff2a85');
+
+            if (player.hp <= 0) {
+                triggerEndGame(false);
+            }
+        }
+
+        function triggerEndGame(victory) {
+            gameState = victory ? 'VICTORY' : 'GAMEOVER';
+            hudOverlay.classList.add('hidden');
+            quizOverlay.classList.add('hidden');
+            endScreen.classList.remove('hidden');
+
+            const titleEl = document.getElementById('end-title');
+            const subEl = document.getElementById('end-subtitle');
+            if (victory) {
+                titleEl.textContent = 'VICTORY!';
+                titleEl.className = 'text-2xl sm:text-4xl text-green-400 neon-text-cyan mb-2';
+                subEl.textContent = `YOU CONQUERED ALL ${BOSS_STAGES.length} DINO MAID STAGES!`;
+                sfx.stageClear();
+            } else {
+                titleEl.textContent = 'GAME OVER';
+                titleEl.className = 'text-2xl sm:text-4xl text-pink-500 neon-text-pink mb-2';
+                subEl.textContent = `FALLEN ON STAGE ${boss.stageIndex + 1} (${BOSS_STAGES[boss.stageIndex].name})`;
+            }
+
+            document.getElementById('end-stages').textContent = `${victory ? BOSS_STAGES.length : stats.stagesCleared} / ${BOSS_STAGES.length}`;
+            document.getElementById('end-time').textContent = `${stats.survivalTime.toFixed(1)}s`;
+            document.getElementById('end-rarest').textContent = stats.rarestPct !== null ? `${stats.rarestPct}%` : 'N/A';
+            document.getElementById('end-score').textContent = `${stats.score}`;
+        }
+
+        // ============================================================================
+        // 8. KRILLION TRIVIA PAUSE FLOW
+        // ============================================================================
+        function triggerKrillionQuiz() {
+            gameState = 'QUIZ';
+            sfx.quizFreeze();
+
+            if (usedQuestionIndices.size >= TRIVIA_BANK.length) {
+                usedQuestionIndices.clear();
+            }
+            let idx;
+            do {
+                idx = Math.floor(Math.random() * TRIVIA_BANK.length);
+            } while (usedQuestionIndices.has(idx));
+            usedQuestionIndices.add(idx);
+            currentQuestion = TRIVIA_BANK[idx];
+
+            quizCountdown = 20.0;
+            quizTimerEl.textContent = '20.0s';
+            quizPromptEl.textContent = currentQuestion.prompt;
+            quizInput.value = '';
+            quizInputArea.classList.remove('hidden');
+            quizResultArea.classList.add('hidden');
+            quizOverlay.classList.remove('hidden');
+
+            setTimeout(() => quizInput.focus(), 40);
+        }
+
+        function submitTriviaAnswer() {
+            if (!quizResultArea.classList.contains('hidden')) return;
+            const evalRes = evaluateKrillionAnswer(quizInput.value, currentQuestion);
+            const reward = computeTriviaReward(evalRes);
+
+            if (evalRes.valid) {
+                stats.score += Math.max(100, (101 - evalRes.pct) * 15);
+                if (stats.rarestPct === null || evalRes.pct < stats.rarestPct) {
+                    stats.rarestPct = evalRes.pct;
+                }
+            }
+
+            if (reward.heal > 0) {
+                player.hp = Math.min(player.maxHp, player.hp + reward.heal);
+            }
+            if (reward.buff) {
+                player.activeBuff = { ...reward.buff };
+            }
+            if (reward.newPower) {
+                player.permanentPower = reward.newPower;
+                player.powerCycleTimer = 0;
+            }
+
+            sfx.powerUp(evalRes.valid && (evalRes.pct < 10 || reward.newPower));
+
+            quizAutocorrectNote.textContent = evalRes.wasCorrected
+                ? `AUTOCORRECTED TO: "${evalRes.corrected}"`
+                : (evalRes.valid ? `VERIFIED: "${evalRes.corrected}"` : 'UNRECOGNIZED ANSWER');
+            quizRarityDisplay.textContent = reward.title;
+            quizRewardDesc.textContent = reward.desc;
+
+            // Animate the rarity percentage bar
+            const displayPct = evalRes.valid ? Math.max(1, Math.min(100, evalRes.pct)) : 100;
+            quizPctLabel.textContent = evalRes.valid ? `${displayPct}% OF PLAYERS` : 'INVALID (100%)';
+            quizRarityBar.style.width = '0%';
+            if (!evalRes.valid) {
+                quizRarityBar.className = 'h-full bg-red-600 transition-all duration-500 ease-out';
+            } else if (displayPct < 10) {
+                quizRarityBar.className = 'h-full bg-gradient-to-r from-green-400 to-cyan-400 transition-all duration-500 ease-out';
+            } else {
+                quizRarityBar.className = 'h-full bg-gradient-to-r from-yellow-400 to-pink-500 transition-all duration-500 ease-out';
+            }
+
+            quizInputArea.classList.add('hidden');
+            quizResultArea.classList.remove('hidden');
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    quizRarityBar.style.width = `${displayPct}%`;
+                });
+            });
+            updateHUD();
+        }
+
+        function resumeFromQuiz() {
+            quizOverlay.classList.add('hidden');
+            krillionTimer = KRILLION_INTERVAL;
+            player.invulnTimer = 1.0;
+            gameState = 'PLAYING';
+            lastTimestamp = performance.now();
+        }
+
+        document.getElementById('btn-start').addEventListener('click', startNewGame);
+        document.getElementById('btn-restart').addEventListener('click', startNewGame);
+        document.getElementById('btn-submit-answer').addEventListener('click', submitTriviaAnswer);
+        document.getElementById('btn-resume-battle').addEventListener('click', resumeFromQuiz);
+
+        // ============================================================================
+        // 9. PLAYER, BOSS & PROJECTILE COMBAT SIMULATION
+        // ============================================================================
+        function updatePlayer(dt) {
+            if (player.invulnTimer > 0) player.invulnTimer -= dt;
+            if (player.shootCooldown > 0) player.shootCooldown -= dt;
+            if (player.dashCooldown > 0) player.dashCooldown -= dt;
+
+            if (player.activeBuff) {
+                player.activeBuff.timer -= dt;
+                if (player.activeBuff.timer <= 0) {
+                    player.activeBuff = null;
+                }
+            }
+
+            // Periodic Permanent Powers (Lightning 1s stun / 10s, Ice 3s slow / 10s)
+            if (player.permanentPower) {
+                const pid = player.permanentPower.id;
+                if (pid === 'LIGHTNING' || pid === 'ICE') {
+                    player.powerCycleTimer += dt;
+                    if (player.powerCycleTimer >= 10.0) {
+                        player.powerCycleTimer = 0;
+                        if (pid === 'LIGHTNING') {
+                            boss.stunTimer = 1.0;
+                            sfx.powerUp(false);
+                            spawnFloatingText(boss.x + boss.w / 2, boss.y - boss.h - 12, '⚡ STUNNED 1s!', '#ffe600');
+                            spawnParticles(boss.x + boss.w / 2, boss.y - boss.h / 2, '#ffe600', 16, 150);
+                        } else if (pid === 'ICE') {
+                            boss.iceTimer = 3.0;
+                            sfx.powerUp(false);
+                            spawnFloatingText(boss.x + boss.w / 2, boss.y - boss.h - 12, '❄️ CHILLED 3s!', '#7dd3fc');
+                            spawnParticles(boss.x + boss.w / 2, boss.y - boss.h / 2, '#7dd3fc', 16, 140);
+                        }
+                    }
+                }
+            }
+
+            // Player horizontal movement & dash
+            let moveDir = 0;
+            if (keys['ArrowLeft'] || keys['KeyA']) moveDir -= 1;
+            if (keys['ArrowRight'] || keys['KeyD']) moveDir += 1;
+
+            if (moveDir !== 0) {
+                player.facing = moveDir;
+                player.animFrame += dt * 12;
+            } else {
+                player.animFrame = 0;
+            }
+
+            if ((keys['ShiftLeft'] || keys['ShiftRight'] || keys['KeyX']) && player.dashCooldown <= 0 && player.dashTimer <= 0) {
+                player.dashTimer = 0.16;
+                player.dashCooldown = 0.95;
+                sfx.dash();
+                spawnParticles(player.x + player.w / 2, player.y - player.h / 2, '#00f0ff', 8, 110);
+            }
+
+            if (player.dashTimer > 0) {
+                player.dashTimer -= dt;
+                player.x += player.facing * (player.speed * 2.5) * dt;
+            } else {
+                player.x += moveDir * player.speed * dt;
+            }
+
+            // Player jump & gravity
+            if ((keys['ArrowUp'] || keys['KeyW']) && player.onGround) {
+                player.vy = player.jumpForce;
+                player.onGround = false;
+                sfx.jump();
+            }
+
+            player.vy += player.gravity * dt;
+            player.y += player.vy * dt;
+
+            if (player.y >= GROUND_Y) {
+                player.y = GROUND_Y;
+                player.vy = 0;
+                player.onGround = true;
+            }
+
+            player.x = Math.max(12, Math.min(GAME_W - player.w - 12, player.x));
+
+            // Player shooting
+            if ((keys['Space'] || keys['KeyZ']) && player.shootCooldown <= 0) {
+                const buff = player.activeBuff;
+                const spread = buff ? buff.spread : 1;
+                const fireRate = buff ? buff.fireRate : 0.22;
+                let baseDmg = buff ? buff.damage : 14;
+
+                // Double shot reduces per-bolt damage by 5%; Triple shot reduces by 10%
+                if (spread === 2) {
+                    baseDmg *= 0.95;
+                } else if (spread === 3) {
+                    baseDmg *= 0.90;
+                }
+                // Flame Handguns permanent power boosts damage by 1.5x
+                if (player.permanentPower && player.permanentPower.id === 'FLAME') {
+                    baseDmg *= 1.5;
+                }
+
+                const finalDmg = Math.max(1, Math.round(baseDmg));
+                const bulletColor = player.permanentPower
+                    ? player.permanentPower.bulletColor
+                    : (buff ? buff.color : '#00f0ff');
+
+                const gunX = player.facing === 1 ? player.x + player.w + 4 : player.x - 4;
+                const gunY = player.y - 22;
+
+                for (let i = 0; i < spread; i++) {
+                    const offsetAngle = spread === 1 ? 0 : (i - (spread - 1) / 2) * 0.13;
+                    const spd = 540;
+                    playerBullets.push({
+                        x: gunX,
+                        y: gunY,
+                        vx: Math.cos(offsetAngle) * spd * player.facing,
+                        vy: Math.sin(offsetAngle) * spd,
+                        r: player.permanentPower && player.permanentPower.id === 'FLAME' ? 5 : 4,
+                        damage: finalDmg,
+                        color: bulletColor
+                    });
+                }
+
+                player.shootCooldown = fireRate;
+                sfx.shoot(spread);
+            }
+        }
+
+        function updateBoss(dt) {
+            const cfg = BOSS_STAGES[boss.stageIndex];
+            const roundSpeedScale = Math.pow(1.1, boss.stageIndex);
+            const roundDmgScale = Math.pow(1.03, boss.stageIndex);
+            const dinoDmgScale = cfg.damageMult * 0.85 * 0.90 * 0.90 * 0.70 * roundDmgScale;
+            if (boss.hitFlash > 0) boss.hitFlash -= dt;
+            if (boss.stunTimer > 0) boss.stunTimer -= dt;
+            if (boss.iceTimer > 0) boss.iceTimer -= dt;
+
+            // Calculate boss time dilation from Chrono Slow-Down (50%) or Ice Freeze (50%)
+            let bossTimeScale = roundSpeedScale;
+            if (player.permanentPower && player.permanentPower.id === 'SLOWDOWN') {
+                bossTimeScale *= 0.5;
+            }
+            if (boss.iceTimer > 0) {
+                bossTimeScale *= 0.5;
+            }
+            if (boss.stunTimer > 0) {
+                bossTimeScale = 0;
+            }
+
+            const bDt = dt * bossTimeScale;
+            boss.animTimer += bDt * 7;
+            boss.orbitAngle += bDt * 2.4;
+
+            const bossCenter = boss.x + boss.w / 2;
+            const targetCenter = player.x + player.w / 2;
+            if (!boss.isJumping && boss.chargeTimer <= 0 && bossTimeScale > 0) {
+                boss.facing = targetCenter < bossCenter ? -1 : 1;
+            }
+
+            // Vacuum Vortex Pull (Stage 7 special)
+            if (boss.vortexTimer > 0) {
+                boss.vortexTimer -= bDt;
+                const pullDir = bossCenter > targetCenter ? 1 : -1;
+                player.x = Math.max(12, Math.min(GAME_W - player.w - 12, player.x + pullDir * 115 * dt));
+            }
+
+            if (boss.isJumping) {
+                boss.x += boss.vx * bDt;
+                boss.vy += 860 * bDt;
+                boss.y += boss.vy * bDt;
+                boss.x = Math.max(24, Math.min(GAME_W - boss.w - 24, boss.x));
+
+                if (boss.y >= GROUND_Y) {
+                    boss.y = GROUND_Y;
+                    boss.vy = 0;
+                    boss.vx = 0;
+                    boss.isJumping = false;
+                    if (boss.stageIndex < BOSS_STAGES.length - 3) {
+                        boss.rushCooldown = Math.max(boss.rushCooldown, 2.0);
+                    }
+                    screenShake = 10;
+                    sfx.roar();
+                    spawnParticles(bossCenter, GROUND_Y, cfg.accentColor, 18, 160);
+
+                    [-1, 1].forEach(dir => {
+                        bossProjectiles.push({
+                            type: 'shockwave',
+                            x: bossCenter,
+                            y: GROUND_Y - 10,
+                            vx: dir * (230 + boss.stageIndex * 12),
+                            vy: 0,
+                            r: 11,
+                            damage: 13 * dinoDmgScale,
+                            color: cfg.accentColor
+                        });
+                    });
+                }
+            } else {
+                // Broomstick Charge special (Stage 2) or loose non-chasing patrol
+                if (boss.chargeTimer > 0) {
+                    boss.chargeTimer -= bDt;
+                    boss.x += boss.facing * (cfg.speed * 2.0 * 2.55) * bDt;
+                    if (Math.random() < 0.6) {
+                        spawnParticles(bossCenter, boss.y - 24, cfg.accentColor, 2, 90);
+                    }
+                } else {
+                    // Loose pacing patrol instead of relentlessly chasing the player
+                    boss.patrolTimer -= bDt;
+                    if (boss.patrolTimer <= 0) {
+                        boss.patrolTimer = 1.4 + Math.random() * 1.4;
+                        boss.patrolDir = Math.random() < 0.25 ? 0 : (Math.random() < 0.5 ? -1 : 1);
+                    }
+                    const patrolSpd = cfg.speed * 2.0 * 0.42;
+                    boss.x += boss.patrolDir * patrolSpd * bDt;
+                    if (boss.x <= 28) {
+                        boss.x = 28;
+                        boss.patrolDir = 1;
+                    } else if (boss.x >= GAME_W - boss.w - 28) {
+                        boss.x = GAME_W - boss.w - 28;
+                        boss.patrolDir = -1;
+                    }
+                }
+                boss.x = Math.max(24, Math.min(GAME_W - boss.w - 24, boss.x));
+            }
+
+            // Dedicated Rush Attack every 3 to 5 seconds
+            if (!boss.isJumping && boss.chargeTimer <= 0) {
+                boss.rushCooldown -= bDt;
+                if (boss.rushCooldown <= 0) {
+                    boss.rushCooldown = 3.0 + Math.random() * 2.0;
+                    if (boss.stageIndex < BOSS_STAGES.length - 3) {
+                        boss.jumpCooldown = Math.max(boss.jumpCooldown, 2.0);
+                    }
+                    boss.chargeTimer = 0.65;
+                    screenShake = 7;
+                    sfx.roar();
+                    spawnFloatingText(bossCenter, boss.y - boss.h - 10, '⚡ DINO RUSH!', cfg.accentColor);
+                    spawnParticles(bossCenter, GROUND_Y, cfg.accentColor, 12, 120);
+                }
+            }
+
+            // Dedicated Gap-Closing Jump Attack every 3 to 7 seconds
+            if (!boss.isJumping && boss.chargeTimer <= 0) {
+                boss.jumpCooldown -= bDt;
+                if (boss.jumpCooldown <= 0) {
+                    boss.jumpCooldown = 3.0 + Math.random() * 4.0;
+                    if (boss.stageIndex < BOSS_STAGES.length - 3) {
+                        boss.rushCooldown = Math.max(boss.rushCooldown, 2.0);
+                    }
+                    boss.isJumping = true;
+                    boss.vy = -460;
+                    const jumpTime = (2 * 460) / 860;
+                    const desiredVx = (targetCenter - bossCenter) / jumpTime;
+                    boss.vx = Math.max(-440, Math.min(440, desiredVx));
+                    sfx.jump();
+                    spawnFloatingText(bossCenter, boss.y - boss.h - 10, '⚡ LEAP SLAM!', cfg.accentColor);
+                    spawnParticles(bossCenter, GROUND_Y, '#ffffff', 12, 110);
+                }
+            }
+
+            // Orbiting porcelain teacups collision
+            if (cfg.orbitCups > 0) {
+                for (let i = 0; i < cfg.orbitCups; i++) {
+                    const ang = boss.orbitAngle + (i * Math.PI * 2) / cfg.orbitCups;
+                    const cx = bossCenter + Math.cos(ang) * 76;
+                    const cy = (boss.y - boss.h * 0.52) + Math.sin(ang) * 44;
+                    if (
+                        Math.abs(cx - (player.x + player.w / 2)) < 18 &&
+                        Math.abs(cy - (player.y - player.h / 2)) < 22
+                    ) {
+                        damagePlayer(8 * dinoDmgScale);
+                    }
+                }
+            }
+
+            // Boss 5 Standard Attacks + 1 Unique Stage Special
+            boss.attackTimer -= bDt;
+            if (boss.attackTimer <= 0 && !boss.isJumping) {
+                boss.attackTimer = cfg.attackInterval / (1.15 * 1.10);
+                boss.attackCounter++;
+
+                const mouthX = boss.facing === -1 ? boss.x + 12 : boss.x + boss.w - 12;
+                const mouthY = boss.y - boss.h + 36;
+                const dusterX = boss.facing === -1 ? boss.x - 4 : boss.x + boss.w + 4;
+                const dusterY = boss.y - 72;
+
+                if (boss.attackCounter % 4 === 0) {
+                    triggerStageUniqueSpecial(cfg, bossCenter, mouthX, mouthY, dusterX, dusterY, targetCenter, dinoDmgScale);
+                } else {
+                    const stdRoll = Math.floor(Math.random() * 5);
+                    sfx.roar();
+
+                    if (stdRoll === 0) {
+                        // 1. Dust Tornado Stack
+                        const count = boss.stageIndex >= 5 ? 3 : 2;
+                        for (let i = 0; i < count; i++) {
+                            bossProjectiles.push({
+                                type: 'tornado',
+                                x: dusterX,
+                                y: GROUND_Y - 18 - i * 32,
+                                vx: boss.facing * (165 + boss.stageIndex * 8),
+                                vy: 0,
+                                r: 12,
+                                damage: 11 * dinoDmgScale,
+                                color: '#a855f7'
+                            });
+                        }
+                    } else if (stdRoll === 1) {
+                        // 2. Arcing Porcelain Teacup Volley
+                        const cups = Math.min(8, 3 + Math.floor(boss.stageIndex / 2));
+                        for (let i = 0; i < cups; i++) {
+                            bossProjectiles.push({
+                                type: 'teacup',
+                                x: mouthX,
+                                y: mouthY,
+                                vx: boss.facing * (135 + i * 34),
+                                vy: -220 - i * 28,
+                                gravity: 460,
+                                r: 8,
+                                damage: 10 * dinoDmgScale,
+                                color: '#ffffff'
+                            });
+                        }
+                    } else if (stdRoll === 2) {
+                        // 3. Curtsy Ground Shockwave
+                        const dirs = boss.stageIndex >= 4 ? [-1, 1] : [boss.facing];
+                        dirs.forEach(dir => {
+                            bossProjectiles.push({
+                                type: 'shockwave',
+                                x: bossCenter,
+                                y: GROUND_Y - 10,
+                                vx: dir * (225 + boss.stageIndex * 10),
+                                vy: 0,
+                                r: 11,
+                                damage: 12 * dinoDmgScale,
+                                color: cfg.accentColor
+                            });
+                        });
+                    } else if (stdRoll === 3) {
+                        // 4. Aimed Feather Duster Orb Spread
+                        const spreadCount = boss.stageIndex >= 5 ? 5 : 3;
+                        const baseAng = Math.atan2((player.y - player.h / 2) - dusterY, targetCenter - dusterX);
+                        for (let i = 0; i < spreadCount; i++) {
+                            const ang = baseAng + (i - (spreadCount - 1) / 2) * 0.18;
+                            const spd = 210 + boss.stageIndex * 8;
+                            bossProjectiles.push({
+                                type: 'feather_orb',
+                                x: dusterX,
+                                y: dusterY,
+                                vx: Math.cos(ang) * spd,
+                                vy: Math.sin(ang) * spd,
+                                r: 8,
+                                damage: 10 * dinoDmgScale,
+                                color: cfg.accentColor
+                            });
+                        }
+                    } else {
+                        // 5. Bouncing Sugar-Cube Bombs
+                        for (let i = 0; i < 2; i++) {
+                            bossProjectiles.push({
+                                type: 'sugar_bomb',
+                                x: mouthX,
+                                y: mouthY,
+                                vx: boss.facing * (150 + i * 55),
+                                vy: -180 - i * 30,
+                                gravity: 480,
+                                bounces: 2,
+                                r: 9,
+                                damage: 11 * dinoDmgScale,
+                                color: '#ffd700'
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Body contact check
+            if (
+                player.x < boss.x + boss.w - 12 &&
+                player.x + player.w > boss.x + 12 &&
+                player.y > boss.y - boss.h + 14 &&
+                player.y - player.h < boss.y
+            ) {
+                damagePlayer(10 * dinoDmgScale);
+            }
+        }
+
+        function triggerStageUniqueSpecial(cfg, bossCenter, mouthX, mouthY, dusterX, dusterY, targetCenter, dinoDmgScale) {
+            sfx.roar();
+            spawnFloatingText(bossCenter, boss.y - boss.h - 14, `★ ${cfg.specialName}! ★`, cfg.accentColor);
+
+            switch (cfg.specialType || cfg.stage) {
+                case 1: {
+                    // Stage 1 Special: SOAP BUBBLE BARRAGE (floating wavy soap bubbles)
+                    for (let i = 0; i < 5; i++) {
+                        bossProjectiles.push({
+                            type: 'bubble',
+                            x: dusterX,
+                            y: dusterY - 20 + i * 14,
+                            vx: boss.facing * (120 + i * 18),
+                            vy: Math.sin(i) * 45,
+                            waveOffset: i * 1.3,
+                            r: 10,
+                            damage: 9 * dinoDmgScale,
+                            color: '#80f5ff'
+                        });
+                    }
+                    break;
+                }
+                case 2: {
+                    // Stage 2 Special: BROOMSTICK CHARGE (high-speed dash across arena)
+                    boss.chargeTimer = 0.65;
+                    screenShake = 7;
+                    break;
+                }
+                case 3: {
+                    // Stage 3 Special: BOILING KETTLE GEYSER (erupting steam pillars from ground)
+                    for (let i = 0; i < 4; i++) {
+                        const gx = Math.max(40, Math.min(GAME_W - 40, targetCenter + (i - 1.5) * 75));
+                        bossProjectiles.push({
+                            type: 'geyser',
+                            x: gx,
+                            y: GROUND_Y - 6,
+                            vx: 0,
+                            vy: -260 - i * 25,
+                            gravity: 340,
+                            r: 11,
+                            damage: 11 * dinoDmgScale,
+                            color: '#ffffff'
+                        });
+                    }
+                    break;
+                }
+                case 4: {
+                    // Stage 4 Special: SILVERWARE FAN VOLLEY (wide 6-blade fork/knife fan)
+                    for (let i = 0; i < 6; i++) {
+                        const ang = (boss.facing === -1 ? Math.PI : 0) + (i - 2.5) * 0.16;
+                        bossProjectiles.push({
+                            type: 'silverware',
+                            x: dusterX,
+                            y: dusterY,
+                            vx: Math.cos(ang) * 265,
+                            vy: Math.sin(ang) * 265,
+                            r: 7,
+                            damage: 10 * dinoDmgScale,
+                            color: '#e2e8f0'
+                        });
+                    }
+                    break;
+                }
+                case 5: {
+                    // Stage 5 Special: CHANDELIER SHATTER (bouncing golden crystal bombs)
+                    for (let i = 0; i < 3; i++) {
+                        bossProjectiles.push({
+                            type: 'sugar_bomb',
+                            x: mouthX,
+                            y: mouthY - 12,
+                            vx: boss.facing * (145 + i * 65),
+                            vy: -170 - i * 35,
+                            gravity: 500,
+                            bounces: 3,
+                            r: 10,
+                            damage: 11 * dinoDmgScale,
+                            color: '#ffd700'
+                        });
+                    }
+                    break;
+                }
+                case 6: {
+                    // Stage 6 Special: POLISH MIRROR BEAM (fast horizontal laser stream)
+                    screenShake = 8;
+                    for (let i = 0; i < 7; i++) {
+                        bossProjectiles.push({
+                            type: 'mirror_beam',
+                            x: mouthX + boss.facing * i * 22,
+                            y: GROUND_Y - 22,
+                            vx: boss.facing * 360,
+                            vy: 0,
+                            r: 8,
+                            damage: 11 * dinoDmgScale,
+                            color: '#38bdf8'
+                        });
+                    }
+                    break;
+                }
+                case 7: {
+                    // Stage 7 Special: VACUUM VORTEX PULL (pulls hero inward while launching orbs)
+                    boss.vortexTimer = 2.0;
+                    for (let i = 0; i < 4; i++) {
+                        bossProjectiles.push({
+                            type: 'tornado',
+                            x: bossCenter,
+                            y: GROUND_Y - 22 - i * 34,
+                            vx: boss.facing * 195,
+                            vy: 0,
+                            r: 11,
+                            damage: 11 * dinoDmgScale,
+                            color: '#a855f7'
+                        });
+                    }
+                    break;
+                }
+                case 8: {
+                    // Stage 8 Special: SOLAR DUSTER NOVA (360-degree radial ring burst)
+                    screenShake = 9;
+                    const ringCount = 10;
+                    for (let i = 0; i < ringCount; i++) {
+                        const ang = (i * Math.PI * 2) / ringCount;
+                        bossProjectiles.push({
+                            type: 'feather_orb',
+                            x: bossCenter,
+                            y: boss.y - boss.h / 2,
+                            vx: Math.cos(ang) * 200,
+                            vy: Math.sin(ang) * 200,
+                            r: 8,
+                            damage: 11 * dinoDmgScale,
+                            color: '#ffd700'
+                        });
+                    }
+                    break;
+                }
+                case 9: {
+                    // Stage 9 Special: GRANDFATHER CLOCK SPIRAL (accelerating time-gear projectiles)
+                    for (let i = 0; i < 6; i++) {
+                        const ang = (boss.facing === -1 ? Math.PI : 0) + (i - 2.5) * 0.24;
+                        bossProjectiles.push({
+                            type: 'clock_gear',
+                            x: dusterX,
+                            y: dusterY,
+                            vx: Math.cos(ang) * 140,
+                            vy: Math.sin(ang) * 140,
+                            accel: 160,
+                            r: 9,
+                            damage: 12 * dinoDmgScale,
+                            color: '#39ff14'
+                        });
+                    }
+                    break;
+                }
+                case 10: {
+                    // Stage 10 Special: SPAWN 3 LITTLE MAID RAPTORS (100 HP each, 5 melee damage every 1.5s)
+                    screenShake = 10;
+                    for (let i = 0; i < 3; i++) {
+                        if (miniRaptors.length >= 6) break;
+                        const spawnX = Math.max(30, Math.min(GAME_W - 60, bossCenter + (i - 1) * 44));
+                        const raptorHp = Math.round(100 * 0.90);
+                        miniRaptors.push({
+                            x: spawnX,
+                            y: GROUND_Y,
+                            w: 28,
+                            h: 34,
+                            hp: raptorHp,
+                            maxHp: raptorHp,
+                            speed: (145 + i * 12) * Math.pow(1.1, boss.stageIndex),
+                            facing: boss.facing,
+                            meleeCooldown: 0.4 + i * 0.2,
+                            hitFlash: 0,
+                            animTimer: i * 1.5
+                        });
+                        spawnParticles(spawnX + 14, GROUND_Y - 16, '#ff2a4b', 10, 110);
+                    }
+                    break;
+                }
+            }
+        }
+
+        // ============================================================================
+        // 10. PROJECTILE & EFFECT UPDATER
+        // ============================================================================
+        function updateProjectilesAndEffects(dt) {
+            const pScale = (player.permanentPower && player.permanentPower.id === 'SLOWDOWN') ? 0.5 : 1.0;
+            const pDt = dt * pScale;
+
+            // Update player bullets
+            for (let i = playerBullets.length - 1; i >= 0; i--) {
+                const b = playerBullets[i];
+                b.x += b.vx * dt;
+                b.y += b.vy * dt;
+
+                if (b.x < -20 || b.x > GAME_W + 20 || b.y < -20 || b.y > GROUND_Y + 10) {
+                    playerBullets.splice(i, 1);
+                    continue;
+                }
+
+                // Check hit against Mini Maid Raptors first
+                let hitRaptor = false;
+                for (let rIdx = miniRaptors.length - 1; rIdx >= 0; rIdx--) {
+                    const mr = miniRaptors[rIdx];
+                    if (
+                        b.x + b.r > mr.x &&
+                        b.x - b.r < mr.x + mr.w &&
+                        b.y + b.r > mr.y - mr.h &&
+                        b.y - b.r < mr.y
+                    ) {
+                        mr.hp -= b.damage;
+                        mr.hitFlash = 0.08;
+                        stats.score += b.damage * 3;
+                        sfx.bossHit();
+                        spawnParticles(b.x, b.y, b.color, 4, 70);
+                        spawnFloatingText(b.x, b.y - 8, `-${b.damage}`, '#ffd700');
+                        playerBullets.splice(i, 1);
+                        hitRaptor = true;
+
+                        if (mr.hp <= 0) {
+                            spawnParticles(mr.x + mr.w / 2, mr.y - mr.h / 2, '#ff2a4b', 14, 130);
+                            spawnFloatingText(mr.x + mr.w / 2, mr.y - mr.h - 6, 'RAPTOR DUSTED!', '#39ff14');
+                            miniRaptors.splice(rIdx, 1);
+                        }
+                        break;
+                    }
+                }
+                if (hitRaptor) continue;
+
+                // Boss hit check
+                if (
+                    b.x + b.r > boss.x + 8 &&
+                    b.x - b.r < boss.x + boss.w - 8 &&
+                    b.y + b.r > boss.y - boss.h + 10 &&
+                    b.y - b.r < boss.y
+                ) {
+                    boss.hp -= b.damage;
+                    boss.hitFlash = 0.08;
+                    stats.score += b.damage * 4;
+                    sfx.bossHit();
+                    spawnParticles(b.x, b.y, b.color, 5, 80);
+                    spawnFloatingText(b.x, b.y - 8, `-${b.damage}`, '#ffd700');
+                    playerBullets.splice(i, 1);
+
+                    if (boss.hp <= 0) {
+                        if (boss.stageIndex + 1 < BOSS_STAGES.length) {
+                            triggerStageTransition(boss.stageIndex + 1);
+                        } else {
+                            stats.stagesCleared = BOSS_STAGES.length;
+                            stats.score += 5000;
+                            triggerEndGame(true);
+                        }
+                        return;
+                    }
+                }
+            }
+
+            // Update Mini Maid Raptors (Stage 10 Special)
+            for (let i = miniRaptors.length - 1; i >= 0; i--) {
+                const mr = miniRaptors[i];
+                if (mr.hitFlash > 0) mr.hitFlash -= dt;
+                if (mr.meleeCooldown > 0) mr.meleeCooldown -= pDt;
+                mr.animTimer += pDt * 10;
+
+                const targetX = player.x + player.w / 2;
+                const mrCenter = mr.x + mr.w / 2;
+                const dist = targetX - mrCenter;
+                mr.facing = dist < 0 ? -1 : 1;
+
+                if (Math.abs(dist) > 16) {
+                    mr.x += mr.facing * (mr.speed * 2.0) * pDt;
+                }
+
+                // Melee attack check: scaled by 0.90 baseline and 1.03x per round
+                if (
+                    player.x < mr.x + mr.w &&
+                    player.x + player.w > mr.x &&
+                    player.y > mr.y - mr.h &&
+                    player.y - player.h < mr.y &&
+                    mr.meleeCooldown <= 0
+                ) {
+                    mr.meleeCooldown = 1.5;
+                    damagePlayer(5 * 0.90 * Math.pow(1.03, boss.stageIndex));
+                }
+            }
+
+            // Update boss projectiles (affected by 1-in-50 Chrono Slow-Down!)
+            for (let i = bossProjectiles.length - 1; i >= 0; i--) {
+                const p = bossProjectiles[i];
+
+                if (p.type === 'bubble') {
+                    p.waveOffset += pDt * 5;
+                    p.vy = Math.sin(p.waveOffset) * 65;
+                } else if (p.type === 'clock_gear') {
+                    const ang = Math.atan2(p.vy, p.vx);
+                    p.vx += Math.cos(ang) * p.accel * pDt;
+                    p.vy += Math.sin(ang) * p.accel * pDt;
+                }
+
+                if (p.gravity) {
+                    p.vy += p.gravity * pDt;
+                }
+
+                p.x += p.vx * pDt;
+                p.y += p.vy * pDt;
+
+                // Floor interactions
+                if (p.y >= GROUND_Y - p.r) {
+                    if (p.type === 'sugar_bomb' && p.bounces > 0) {
+                        p.y = GROUND_Y - p.r;
+                        p.vy = -Math.abs(p.vy) * 0.78;
+                        p.bounces--;
+                        spawnParticles(p.x, GROUND_Y, '#ffd700', 5, 70);
+                    } else if (p.type === 'teacup' || p.type === 'sugar_bomb' || p.type === 'geyser') {
+                        spawnParticles(p.x, GROUND_Y, p.color, 6, 85);
+                        bossProjectiles.splice(i, 1);
+                        continue;
+                    }
+                }
+
+                if (p.x < -40 || p.x > GAME_W + 40 || p.y < -60 || p.y > GAME_H + 40) {
+                    bossProjectiles.splice(i, 1);
+                    continue;
+                }
+
+                // Player collision
+                const px = player.x + player.w / 2;
+                const py = player.y - player.h / 2;
+                if (Math.hypot(p.x - px, p.y - py) < p.r + 12) {
+                    damagePlayer(p.damage);
+                    spawnParticles(p.x, p.y, p.color, 6, 80);
+                    bossProjectiles.splice(i, 1);
+                }
+            }
+
+            // Update particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const pt = particles[i];
+                pt.x += pt.vx * dt;
+                pt.y += pt.vy * dt;
+                pt.vy += 260 * dt;
+                pt.life -= dt;
+                if (pt.life <= 0) particles.splice(i, 1);
+            }
+
+            // Update floating texts
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                const ft = floatingTexts[i];
+                ft.y -= 28 * dt;
+                ft.life -= dt;
+                if (ft.life <= 0) floatingTexts.splice(i, 1);
+            }
+        }
+
+        // ============================================================================
+        // 11. PIXEL-ART RENDERING ENGINE
+        // ============================================================================
+        function drawArenaBackground() {
+            // 1. Deep Retro Synthwave Twilight Sky (Darkened lower horizon for crisp foreground contrast)
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+            skyGrad.addColorStop(0, '#070214');
+            skyGrad.addColorStop(0.42, '#1d0742');
+            skyGrad.addColorStop(0.75, '#470f4a');
+            skyGrad.addColorStop(1, '#260b36');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, GAME_W, GROUND_Y);
+
+            // 2. Twinkling Retro Pixel Stars
+            const stars = [
+                [45, 32], [110, 58], [185, 24], [250, 48], [320, 20],
+                [480, 28], [550, 52], [630, 22], [715, 44], [765, 26],
+                [75, 92], [295, 84], [515, 88], [685, 95]
+            ];
+            stars.forEach(([sx, sy], idx) => {
+                ctx.fillStyle = idx % 2 === 0 ? 'rgba(255,255,255,0.75)' : 'rgba(0,240,255,0.65)';
+                ctx.fillRect(sx, sy, 3, 3);
+            });
+
+            // 3. Striped Outrun Sun (Positioned higher in the sky out of the combat lane)
+            const sunX = GAME_W / 2;
+            const sunY = 175;
+            const sunR = 72;
+            const sunGrad = ctx.createLinearGradient(sunX, sunY - sunR, sunX, sunY + sunR);
+            sunGrad.addColorStop(0, '#d9b836');
+            sunGrad.addColorStop(0.5, '#c95324');
+            sunGrad.addColorStop(1, '#9e1955');
+            ctx.fillStyle = sunGrad;
+            ctx.beginPath();
+            ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Horizontal Synthwave Scan-Bands across Lower Sun
+            ctx.fillStyle = '#26093b';
+            ctx.fillRect(sunX - sunR, sunY + 14, sunR * 2, 4);
+            ctx.fillRect(sunX - sunR, sunY + 26, sunR * 2, 6);
+            ctx.fillRect(sunX - sunR, sunY + 40, sunR * 2, 8);
+            ctx.fillRect(sunX - sunR, sunY + 54, sunR * 2, 10);
+
+            // 4. Far Background City Skyline Silhouettes
+            const farBuildings = [
+                { x: 0, w: 68, h: 195, col: '#120a2b' },
+                { x: 64, w: 82, h: 245, col: '#170d36' },
+                { x: 142, w: 60, h: 175, col: '#100826' },
+                { x: 198, w: 94, h: 270, col: '#1a0e3d' },
+                { x: 288, w: 66, h: 185, col: '#120a2b' },
+                { x: 455, w: 72, h: 205, col: '#120a2b' },
+                { x: 522, w: 96, h: 265, col: '#1a0e3d' },
+                { x: 614, w: 64, h: 180, col: '#100826' },
+                { x: 674, w: 80, h: 235, col: '#170d36' },
+                { x: 750, w: 54, h: 190, col: '#120a2b' }
+            ];
+            farBuildings.forEach(b => {
+                ctx.fillStyle = b.col;
+                ctx.fillRect(b.x, GROUND_Y - b.h, b.w, b.h);
+                // Radio Antenna Spire
+                ctx.fillStyle = '#8c1d52';
+                ctx.fillRect(b.x + Math.floor(b.w / 2), GROUND_Y - b.h - 14, 2, 14);
+                ctx.fillStyle = '#0c7c8c';
+                ctx.fillRect(b.x + Math.floor(b.w / 2) - 1, GROUND_Y - b.h - 17, 4, 4);
+            });
+
+            // 5. Foreground Muted Neon Skyscrapers with Softened Windows
+            const frontBuildings = [
+                { x: 12, w: 74, h: 155, body: '#0d102b', trim: '#14889c', win: '#7a6829' },
+                { x: 96, w: 88, h: 210, body: '#180a2e', trim: '#991f56', win: '#17788a' },
+                { x: 194, w: 70, h: 135, body: '#0b1c2e', trim: '#238c14', win: '#6e7385' },
+                { x: 274, w: 82, h: 175, body: '#1f0b2b', trim: '#998217', win: '#8c4261' },
+                { x: 446, w: 80, h: 170, body: '#0d102b', trim: '#991f56', win: '#7a6829' },
+                { x: 536, w: 92, h: 215, body: '#0b1e29', trim: '#14889c', win: '#227a14' },
+                { x: 638, w: 68, h: 142, body: '#1d0b2b', trim: '#998217', win: '#17788a' },
+                { x: 716, w: 76, h: 185, body: '#100d2e', trim: '#238c14', win: '#8c2252' }
+            ];
+
+            frontBuildings.forEach((b, bIdx) => {
+                const topY = GROUND_Y - b.h;
+                ctx.fillStyle = b.body;
+                ctx.fillRect(b.x, topY, b.w, b.h);
+
+                // Subtle Rooftop Trim & Side Edge Highlight
+                ctx.fillStyle = b.trim;
+                ctx.fillRect(b.x, topY, b.w, 3);
+                ctx.fillRect(b.x, topY, 2, b.h);
+
+                // Dimmed Pixel Window Grid (Keeps upper skyline colorful without distracting near the ground)
+                for (let wy = topY + 14; wy < GROUND_Y - 58; wy += 16) {
+                    for (let wx = b.x + 10; wx < b.x + b.w - 14; wx += 14) {
+                        const pattern = (wx + wy + bIdx * 7) % 6;
+                        if (pattern === 1 || pattern === 3) {
+                            ctx.fillStyle = b.win;
+                            ctx.fillRect(wx, wy, 6, 8);
+                        } else {
+                            ctx.fillStyle = '#070514';
+                            ctx.fillRect(wx, wy, 6, 8);
+                        }
+                    }
+                }
+            });
+
+            // 6. Darkened Combat-Zone Atmospheric Band (Makes Hero & Projectiles Pop Clearly)
+            const combatFog = ctx.createLinearGradient(0, GROUND_Y - 110, 0, GROUND_Y);
+            combatFog.addColorStop(0, 'rgba(7, 4, 18, 0.0)');
+            combatFog.addColorStop(1, 'rgba(7, 4, 18, 0.68)');
+            ctx.fillStyle = combatFog;
+            ctx.fillRect(0, GROUND_Y - 110, GAME_W, 110);
+
+            // 7. Retro Neon Streetlamps Along the Sidewalk
+            for (let lx = 55; lx < GAME_W; lx += 170) {
+                ctx.fillStyle = '#334155';
+                ctx.fillRect(lx, GROUND_Y - 46, 4, 46);
+                ctx.fillStyle = '#189ab4';
+                ctx.fillRect(lx - 4, GROUND_Y - 50, 12, 4);
+            }
+
+            // 8. Neon-Trimmed Retro City Boulevard & Asphalt Street
+            ctx.fillStyle = '#0d091c';
+            ctx.fillRect(0, GROUND_Y, GAME_W, GAME_H - GROUND_Y);
+
+            // Glowing Sidewalk Curb
+            ctx.fillStyle = '#00f0ff';
+            ctx.fillRect(0, GROUND_Y, GAME_W, 3);
+            ctx.fillStyle = '#ff2a85';
+            ctx.fillRect(0, GROUND_Y + 3, GAME_W, 2);
+
+            // Muted Gold Arcade Street Lane Lines
+            const dashW = 36;
+            for (let x = 12; x < GAME_W; x += dashW * 2) {
+                ctx.fillStyle = '#856e14';
+                ctx.fillRect(x, GROUND_Y + 26, dashW, 4);
+            }
+        }
+
+        function drawDinoMaid() {
+            const cfg = BOSS_STAGES[boss.stageIndex];
+            const cx = boss.x + boss.w / 2;
+
+            // Boss Stage Aura
+            if (cfg.auraColor) {
+                ctx.fillStyle = cfg.auraColor;
+                ctx.beginPath();
+                ctx.ellipse(cx, boss.y - boss.h * 0.48, 72, 78, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Orbiting Porcelain Teacups
+            if (cfg.orbitCups > 0) {
+                for (let i = 0; i < cfg.orbitCups; i++) {
+                    const ang = boss.orbitAngle + (i * Math.PI * 2) / cfg.orbitCups;
+                    const ox = cx + Math.cos(ang) * 76;
+                    const oy = (boss.y - boss.h * 0.52) + Math.sin(ang) * 44;
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(ox - 6, oy - 4, 12, 8);
+                    ctx.fillStyle = cfg.accentColor;
+                    ctx.fillRect(ox - 5, oy - 2, 10, 2);
+                }
+            }
+
+            ctx.save();
+            ctx.translate(cx, boss.y);
+            if (boss.facing === 1) ctx.scale(-1, 1);
+
+            const scaleMain = boss.hitFlash > 0
+                ? '#ffffff'
+                : (boss.stunTimer > 0 ? '#ffe600' : (boss.iceTimer > 0 ? '#7dd3fc' : cfg.scaleColor));
+            const scaleDark = boss.hitFlash > 0 ? '#e2e8f0' : cfg.scaleDark;
+            const step = boss.isJumping ? 0 : Math.sin(boss.animTimer) * 4;
+            const jawOpen = Math.abs(Math.sin(boss.animTimer * 0.7)) * 6;
+
+            // 1. Segmented Wagging T-Rex Tail + Dorsal Spikes
+            ctx.fillStyle = scaleMain;
+            ctx.fillRect(28, -54 + step * 0.4, 24, 20);
+            ctx.fillRect(50, -48 - step * 0.5, 22, 14);
+            ctx.fillRect(70, -43 + step * 0.6, 18, 9);
+            // Dorsal Tail Spikes
+            ctx.fillStyle = cfg.accentColor;
+            ctx.fillRect(36, -61 + step * 0.4, 7, 7);
+            ctx.fillRect(56, -55 - step * 0.5, 6, 7);
+            ctx.fillRect(74, -49 + step * 0.6, 5, 6);
+
+            // 2. Muscular Clawed Legs
+            ctx.fillStyle = scaleDark;
+            ctx.fillRect(-24, -26 + step, 16, 26 - step);
+            ctx.fillRect(6, -26 - step, 16, 26 + step);
+            // White Claws
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(-28, -5, 5, 5);
+            ctx.fillRect(2, -5, 5, 5);
+
+            // 3. Victorian Maid Dress & White Frilly Apron
+            ctx.fillStyle = '#14101f';
+            ctx.beginPath();
+            ctx.moveTo(-34, -22);
+            ctx.lineTo(34, -22);
+            ctx.lineTo(24, -76);
+            ctx.lineTo(-24, -76);
+            ctx.closePath();
+            ctx.fill();
+
+            // White Apron & Lace Hem
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(-26, -68, 28, 42);
+            for (let lx = -32; lx <= 26; lx += 10) {
+                ctx.fillRect(lx, -24, 6, 5);
+            }
+            // Pink/Accent Bow
+            ctx.fillStyle = cfg.accentColor;
+            ctx.fillRect(-16, -62, 14, 8);
+
+            // 4. Tiny Stubby T-Rex Arms + Feather Duster
+            ctx.fillStyle = scaleMain;
+            ctx.fillRect(-34, -68, 14, 8);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(-37, -66, 4, 4);
+            // Feather Duster Handle & Plume
+            ctx.fillStyle = '#d97706';
+            ctx.fillRect(-48, -74, 16, 4);
+            ctx.fillStyle = cfg.accentColor;
+            ctx.beginPath();
+            ctx.arc(-52, -72, 11, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 5. Massive T-Rex Head, Snout, Hinged Jaw & Sharp Teeth
+            ctx.fillStyle = scaleMain;
+            // Upper Cranium & Snout
+            ctx.fillRect(-48, -124, 58, 30);
+            // Lower Hinged Jaw
+            ctx.fillRect(-44, -93 + jawOpen, 46, 11);
+
+            // Upper & Lower Fangs
+            ctx.fillStyle = '#ffffff';
+            for (let tx = -44; tx <= -14; tx += 10) {
+                ctx.fillRect(tx, -94, 4, 5);
+                ctx.fillRect(tx + 3, -98 + jawOpen, 4, 5);
+            }
+
+            // Fierce Eye & Nostril
+            ctx.fillStyle = '#ffd700';
+            ctx.fillRect(-16, -116, 10, 10);
+            ctx.fillStyle = '#090512';
+            ctx.fillRect(-14, -114, 5, 6);
+            ctx.fillStyle = scaleDark;
+            ctx.fillRect(-42, -116, 4, 4);
+
+            // 6. Frilly Maid Headband & Optional Royal Crown
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(-26, -132, 34, 8);
+            ctx.fillStyle = cfg.accentColor;
+            ctx.fillRect(-20, -135, 22, 4);
+
+            if (cfg.crown) {
+                ctx.fillStyle = '#ffd700';
+                ctx.fillRect(-16, -145, 20, 10);
+                ctx.fillRect(-16, -149, 4, 4);
+                ctx.fillRect(-8, -150, 4, 5);
+                ctx.fillRect(0, -149, 4, 4);
+            }
+
+            ctx.restore();
+        }
+
+        function drawPlayer() {
+            if (player.invulnTimer > 0 && Math.floor(player.invulnTimer * 18) % 2 === 0) return;
+
+            const cx = player.x + player.w / 2;
+
+            // Crisp Ground Drop Shadow & Subtle Hero Spotlight Glow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+            ctx.beginPath();
+            ctx.ellipse(cx, GROUND_Y + 2, 16, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = 'rgba(0, 240, 255, 0.14)';
+            ctx.beginPath();
+            ctx.ellipse(cx, player.y - player.h / 2, 22, 26, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.save();
+            ctx.translate(cx, player.y);
+            if (player.facing === -1) ctx.scale(-1, 1);
+
+            const legSwing = player.onGround ? Math.sin(player.animFrame) * 4 : 3;
+
+            // High-Contrast White/Dark Silhouette Backing Outline
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(-11, -44, 22, 33);
+
+            // Boots
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(-9, -12 + legSwing, 7, 12 - legSwing);
+            ctx.fillRect(2, -12 - legSwing, 7, 12 + legSwing);
+
+            // Armor Torso
+            ctx.fillStyle = player.permanentPower ? player.permanentPower.bulletColor : '#00f0ff';
+            ctx.fillRect(-10, -28, 20, 16);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(-6, -25, 12, 8);
+
+            // Helmet & Visor
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillRect(-9, -42, 18, 14);
+            ctx.fillStyle = '#ffd700';
+            ctx.fillRect(0, -38, 9, 5);
+
+            // Blaster / Flame Handguns
+            ctx.fillStyle = player.permanentPower && player.permanentPower.id === 'FLAME' ? '#ff6b1a' : '#ffffff';
+            ctx.fillRect(8, -25, 13, 6);
+
+            ctx.restore();
+        }
+
+        function drawProjectilesAndEffects() {
+            // Mini Maid Raptors (Stage 10 Special)
+            miniRaptors.forEach(mr => {
+                ctx.save();
+                const cx = mr.x + mr.w / 2;
+                ctx.translate(cx, mr.y);
+                if (mr.facing === 1) ctx.scale(-1, 1);
+
+                const bodyCol = mr.hitFlash > 0 ? '#ffffff' : '#ff2a4b';
+                const step = Math.sin(mr.animTimer) * 2;
+
+                // Mini Tail & Legs
+                ctx.fillStyle = bodyCol;
+                ctx.fillRect(10, -16, 12, 6);
+                ctx.fillRect(-7, -10 + step, 5, 10 - step);
+                ctx.fillRect(2, -10 - step, 5, 10 + step);
+
+                // Mini Maid Dress & Apron
+                ctx.fillStyle = '#14101f';
+                ctx.fillRect(-10, -22, 20, 13);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(-9, -20, 9, 10);
+
+                // Mini Raptor Head & Headband
+                ctx.fillStyle = bodyCol;
+                ctx.fillRect(-15, -33, 18, 11);
+                ctx.fillStyle = '#ffd700';
+                ctx.fillRect(-6, -30, 4, 4);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(-8, -36, 10, 3);
+
+                ctx.restore();
+
+                // Mini HP Bar above raptor
+                const hpRatio = Math.max(0, mr.hp / mr.maxHp);
+                ctx.fillStyle = '#090512';
+                ctx.fillRect(mr.x, mr.y - mr.h - 10, mr.w, 4);
+                ctx.fillStyle = '#39ff14';
+                ctx.fillRect(mr.x, mr.y - mr.h - 10, mr.w * hpRatio, 4);
+            });
+
+            // Player bullets
+            playerBullets.forEach(b => {
+                ctx.fillStyle = b.color;
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
+            });
+
+            // Boss projectiles
+            bossProjectiles.forEach(p => {
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                const t = performance.now() * 0.012;
+
+                if (p.type === 'tornado') {
+                    // Swirling Layered Dust Cyclone
+                    for (let layer = 0; layer < 4; layer++) {
+                        const w = 24 - layer * 4;
+                        const sway = Math.sin(t * 2.2 + layer * 1.4) * 5;
+                        ctx.fillStyle = layer % 2 === 0 ? '#e9d5ff' : '#a855f7';
+                        ctx.fillRect(-w / 2 + sway, -12 + layer * 6, w, 4);
+                    }
+                    // Floating dust specks around cyclone
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(Math.cos(t * 3) * 12, -8, 3, 3);
+                    ctx.fillRect(Math.sin(t * 2.5) * -12, 4, 3, 3);
+
+                } else if (p.type === 'teacup') {
+                    // Spinning Porcelain Teacup with Handle & Rim
+                    ctx.rotate(t * 1.6);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(-7, -5, 14, 9);
+                    ctx.fillRect(-5, 4, 10, 3);
+                    // Handle
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(6, -3, 4, 5);
+                    // Pink/Gold stripe
+                    ctx.fillStyle = '#ff2a85';
+                    ctx.fillRect(-7, -2, 14, 2);
+
+                } else if (p.type === 'shockwave') {
+                    // Jagged Crescent Ground Shockwave
+                    const dir = p.vx >= 0 ? 1 : -1;
+                    ctx.scale(dir, 1);
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.moveTo(-12, 10);
+                    ctx.lineTo(14, 10);
+                    ctx.lineTo(6, -12);
+                    ctx.lineTo(-4, -2);
+                    ctx.lineTo(-10, -8);
+                    ctx.closePath();
+                    ctx.fill();
+                    // Inner bright energy core
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(-4, 2, 12, 5);
+
+                } else if (p.type === 'feather_orb') {
+                    // Glowing Feather-Plume Energy Orb with Tail
+                    const ang = Math.atan2(p.vy, p.vx);
+                    ctx.rotate(ang);
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, p.r + 4, p.r, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    // Wispy feather trail
+                    ctx.fillRect(-p.r - 9, -3, 8, 2);
+                    ctx.fillRect(-p.r - 7, 1, 6, 2);
+                    // White hot center
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.arc(2, 0, p.r * 0.45, 0, Math.PI * 2);
+                    ctx.fill();
+
+                } else if (p.type === 'bubble') {
+                    // Iridescent Soap Bubble with Specular Shine
+                    ctx.fillStyle = 'rgba(128, 245, 255, 0.25)';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, p.r, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#80f5ff';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    // Glossy highlight
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(-p.r * 0.45, -p.r * 0.45, 4, 4);
+
+                } else if (p.type === 'geyser') {
+                    // Erupting Boiling Steam Jet
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, p.r, 0, Math.PI * 2);
+                    ctx.arc(-5, 6, p.r * 0.7, 0, Math.PI * 2);
+                    ctx.arc(5, 6, p.r * 0.7, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#7dd3fc';
+                    ctx.fillRect(-4, -3, 8, 6);
+
+                } else if (p.type === 'silverware') {
+                    // Gleaming Silver Knife / Fork Blade
+                    const ang = Math.atan2(p.vy, p.vx);
+                    ctx.rotate(ang);
+                    // Handle
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.fillRect(-12, -2, 8, 4);
+                    // Sharp Blade
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.moveTo(-4, -3);
+                    ctx.lineTo(13, 0);
+                    ctx.lineTo(-4, 3);
+                    ctx.closePath();
+                    ctx.fill();
+
+                } else if (p.type === 'sugar_bomb') {
+                    // Faceted Golden Chandelier Crystal Bomb
+                    ctx.rotate(t * 2.0);
+                    ctx.fillStyle = '#ffd700';
+                    ctx.beginPath();
+                    ctx.moveTo(0, -p.r - 2);
+                    ctx.lineTo(p.r + 2, 0);
+                    ctx.lineTo(0, p.r + 2);
+                    ctx.lineTo(-p.r - 2, 0);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(-3, -3, 6, 6);
+
+                } else if (p.type === 'mirror_beam') {
+                    // Piercing Cyan Laser Bolt with Glowing Core
+                    ctx.fillStyle = 'rgba(56, 189, 248, 0.45)';
+                    ctx.fillRect(-p.r - 6, -p.r, (p.r + 6) * 2, p.r * 2);
+                    ctx.fillStyle = '#38bdf8';
+                    ctx.fillRect(-p.r - 4, -p.r * 0.65, (p.r + 4) * 2, p.r * 1.3);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(-p.r - 2, -2, (p.r + 2) * 2, 4);
+
+                } else if (p.type === 'clock_gear') {
+                    // Spinning Neon Clockwork Cog
+                    ctx.rotate(t * 2.5);
+                    ctx.fillStyle = '#39ff14';
+                    for (let tooth = 0; tooth < 4; tooth++) {
+                        ctx.rotate(Math.PI / 4);
+                        ctx.fillRect(-p.r - 2, -2, (p.r + 2) * 2, 4);
+                    }
+                    ctx.beginPath();
+                    ctx.arc(0, 0, p.r * 0.75, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#090612';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, p.r * 0.35, 0, Math.PI * 2);
+                    ctx.fill();
+
+                } else {
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, p.r, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            });
+
+            // Particles
+            particles.forEach(pt => {
+                ctx.fillStyle = pt.color;
+                ctx.fillRect(pt.x, pt.y, pt.size, pt.size);
+            });
+
+            // Floating Combat Texts
+            ctx.font = '10px "Press Start 2P", monospace';
+            ctx.textAlign = 'center';
+            floatingTexts.forEach(ft => {
+                ctx.fillStyle = '#000000';
+                ctx.fillText(ft.text, ft.x + 1, ft.y + 1);
+                ctx.fillStyle = ft.color;
+                ctx.fillText(ft.text, ft.x, ft.y);
+            });
+
+            // Stage Transition Banner
+            if (stageTransitionTimer > 0 && stageBannerData) {
+                ctx.fillStyle = 'rgba(9, 6, 18, 0.82)';
+                ctx.fillRect(140, 145, 520, 110);
+                ctx.strokeStyle = '#ffd700';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(140, 145, 520, 110);
+
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#ffd700';
+                ctx.font = '18px "Press Start 2P", monospace';
+                ctx.fillText(stageBannerData.title, GAME_W / 2, 182);
+
+                ctx.fillStyle = '#ff2a85';
+                ctx.font = '12px "Press Start 2P", monospace';
+                ctx.fillText(stageBannerData.subtitle, GAME_W / 2, 210);
+
+                ctx.fillStyle = '#39ff14';
+                ctx.font = '10px "Press Start 2P", monospace';
+                ctx.fillText(stageBannerData.bonus, GAME_W / 2, 236);
+            }
+        }
+
+        function updateHUD() {
+            const cfg = BOSS_STAGES[boss.stageIndex];
+            hudPlayerHpText.textContent = `${player.hp}/${player.maxHp}`;
+            hudPlayerHpBar.style.width = `${Math.max(0, (player.hp / player.maxHp) * 100)}%`;
+
+            if (player.activeBuff) {
+                hudBuffTag.textContent = `WEAPON: ${player.activeBuff.name} (${player.activeBuff.timer.toFixed(1)}s)`;
+            } else {
+                hudBuffTag.textContent = 'WEAPON: STANDARD';
+            }
+
+            if (player.permanentPower) {
+                hudPowerTag.textContent = `POWER: ${player.permanentPower.label}`;
+                hudPowerTag.className = 'mt-0.5 text-[7px] sm:text-[8px] text-yellow-300 truncate';
+            } else {
+                hudPowerTag.textContent = 'POWER: NONE (<10% CHANCE)';
+                hudPowerTag.className = 'mt-0.5 text-[7px] sm:text-[8px] text-pink-300 truncate';
+            }
+
+            hudKrillionTimer.textContent = `${Math.max(0, krillionTimer).toFixed(1)}s`;
+            hudScore.textContent = `SCORE: ${stats.score}`;
+
+            hudStageBadge.textContent = `STG ${cfg.stage}/${BOSS_STAGES.length}`;
+            hudBossName.textContent = cfg.name;
+            hudBossHpBar.style.width = `${Math.max(0, (boss.hp / boss.maxHp) * 100)}%`;
+            hudBossHpText.textContent = `HP: ${Math.max(0, Math.ceil(boss.hp))}/${boss.maxHp}`;
+        }
+
+        // ============================================================================
+        // 12. MAIN GAME LOOP
+        // ============================================================================
+        function gameLoop(timestamp) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            const dt = Math.min(0.05, (timestamp - lastTimestamp) / 1000);
+            lastTimestamp = timestamp;
+
+            if (gameState === 'PLAYING') {
+                stats.survivalTime += dt;
+                if (stageTransitionTimer > 0) stageTransitionTimer -= dt;
+
+                krillionTimer -= dt;
+                if (krillionTimer <= 0) {
+                    triggerKrillionQuiz();
+                } else {
+                    updatePlayer(dt);
+                    updateBoss(dt);
+                    updateProjectilesAndEffects(dt);
+                    updateHUD();
+                }
+            } else if (gameState === 'QUIZ') {
+                if (!quizInputArea.classList.contains('hidden')) {
+                    quizCountdown -= dt;
+                    quizTimerEl.textContent = `${Math.max(0, quizCountdown).toFixed(1)}s`;
+                    if (quizCountdown <= 0) {
+                        submitTriviaAnswer();
+                    }
+                }
+            }
+
+            // Render Frame
+            ctx.save();
+            if (screenShake > 0) {
+                const sx = (Math.random() - 0.5) * screenShake;
+                const sy = (Math.random() - 0.5) * screenShake;
+                ctx.translate(sx, sy);
+                screenShake = Math.max(0, screenShake - 35 * dt);
+            }
+
+            drawArenaBackground();
+            drawDinoMaid();
+            drawPlayer();
+            drawProjectilesAndEffects();
+            ctx.restore();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.onload = function () {
+            resizeCanvas();
+            requestAnimationFrame(gameLoop);
+        };
+    </script>
+</body>
+</html>
